@@ -101,7 +101,8 @@ class VCTK_VCC2020Dataset(Dataset):
         if split == 'train' or split == 'dev':
             #  path: lists_root / f"{'train'|'dev'}_list.txt"
             # file_list:: str[] (e.g. "p225_007")
-            file_list = open(os.path.join(lists_root, split + '_list.txt')).read().splitlines()
+            with open(os.path.join(lists_root, split + '_list.txt')) as f:
+                file_list = f.read().splitlines()
             for fname in file_list:
                 # e.g. (spk, number) = ("p225", "007")
                 spk, number = fname.split("_")
@@ -123,9 +124,11 @@ class VCTK_VCC2020Dataset(Dataset):
                     print("[Dataset] eval pair list file does not exist: {}".format(eval_pair_list_file))
                     # generate eval pairs
                     ## eval_lists_root / "eval_list.txt"
-                    file_list = open(os.path.join(eval_lists_root, 'eval_list.txt')).read().splitlines()
+                    with open(os.path.join(eval_lists_root, 'eval_list.txt')) as f:
+                        file_list = f.read().splitlines()
                     ## eval_lists_root / "E_train_list.txt"
-                    train_file_list = open(os.path.join(eval_lists_root, 'E_train_list.txt')).read().splitlines()
+                    with open(os.path.join(eval_lists_root, 'E_train_list.txt')) as f:
+                        train_file_list = f.read().splitlines()
                     # Evaluation adress pairs
                     eval_pairs = generate_eval_pairs(file_list, train_file_list, eval_data_root, num_samples)
                     # write in file
