@@ -34,6 +34,10 @@ class Loss(nn.Module):
                               (2) masked loss calculation
     """
     def __init__(self, stats):
+        """
+        Args:
+            stats: Mean and Scale statistics for normalization
+        """
         super(Loss, self).__init__()
         self.objective = torch.nn.L1Loss(reduction="mean")
         self.register_buffer("target_mean", torch.from_numpy(stats.mean_).float())
@@ -59,7 +63,13 @@ class Loss(nn.Module):
         loss = self.objective(x_masked, y_masked)
         return loss
 
+
 class DownstreamExpert(nn.Module):
+    """S3PRL interface of a2a-vc-vctk
+
+    Dataset: `VCTK_VCC2020Dataset` (train/dev/test)
+    """
+
     def __init__(self, upstream_dim, upstream_rate, downstream_expert, expdir, **kwargs):
         super(DownstreamExpert, self).__init__()
         
@@ -108,18 +118,18 @@ class DownstreamExpert(nn.Module):
         )
         self.objective = Loss(self.stats)
 
-
     # Interface
     def get_dataloader(self, split):
+        """S3PRL interface for data load"""
         if split == 'train':
-            return self._get_train_dataloader(self.train_dataset)            
+            return self._get_train_dataloader(self.train_dataset)
         elif split == 'dev':
             return self._get_eval_dataloader(self.dev_dataset)
         elif split == 'test':
             return self._get_eval_dataloader(self.test_dataset)
 
-
     def _get_train_dataloader(self, dataset):
+        """collate_fn should be implemented as dataset's method"""
         sampler = DistributedSampler(dataset) if is_initialized() else None
         return DataLoader(
             dataset, batch_size=self.datarc['train_batch_size'],
@@ -129,14 +139,13 @@ class DownstreamExpert(nn.Module):
             collate_fn=dataset.collate_fn
         )
 
-
     def _get_eval_dataloader(self, dataset):
+        """collate_fn should be implemented as dataset's method"""
         return DataLoader(
             dataset, batch_size=self.datarc['eval_batch_size'],
             shuffle=False, num_workers=self.datarc['num_workers'],
             collate_fn=dataset.collate_fn
         )
-
 
     # Interface
     def forward(self,
@@ -151,6 +160,7 @@ class DownstreamExpert(nn.Module):
                 ref_spk_names, 
                 records,
                 **kwargs):
+        """S3PRL interface for calculation"""
 
         device = input_features[0].device
 
@@ -159,9 +169,10 @@ class DownstreamExpert(nn.Module):
         input_features = pad_sequence(input_features, batch_first=True).to(device=device)
         ref_spk_embs = ref_spk_embs.to(device)
         
-        # forward model
         if split in ["dev", "test"]:
+            # The forward
             predicted_features, predicted_feature_lengths = self.model(input_features, input_feature_lengths, ref_spk_embs)
+
             # save the unnormalized features for dev and test sets
             records["predicted_features"] += predicted_features.cpu().numpy().tolist()
             records["feature_lengths"] += predicted_feature_lengths.cpu().numpy().tolist()
@@ -171,7 +182,7 @@ class DownstreamExpert(nn.Module):
         else:
             predicted_features, predicted_feature_lengths = self.model(input_features, input_feature_lengths, ref_spk_embs, acoustic_features_padded.to(device))
 
-        # loss calculation (masking and normalization are done inside)
+        # Masked/normalized L1 loss
         loss = self.objective(predicted_features,
                               acoustic_features_padded,
                               predicted_feature_lengths,
@@ -181,9 +192,25 @@ class DownstreamExpert(nn.Module):
 
         return loss
 
-
     # interface
     def log_records(self, split, records, logger, global_step, batch_ids, total_batch_num, **kwargs):
+        """S3PRL interface for logging.
+
+        Report loss, save features and generated-waveform
+
+        Args:
+            split: `dev` or `test`?
+            records: Logging target record
+            logger: (maybe) TensorBoard logger
+            global_step: Number of global step, used for file name and TB logging
+            batch_ids: Not Used
+            total_batch_num: Not Used
+            kwargs: Not Used
+        Returns:
+            empty array
+        """
+
+        # Loss value
         loss = torch.FloatTensor(records['loss']).mean().item()
 
         if split in ["dev", "test"]:
@@ -193,9 +220,12 @@ class DownstreamExpert(nn.Module):
             os.makedirs(hdf5_save_dir, exist_ok=True)
             os.makedirs(wav_save_dir, exist_ok=True)
 
+            # wav_path in `records["wav_paths"]` & ref_spk_name in records["ref_spk_names"]
             for i, (wav_path, ref_spk_name) in enumerate(tqdm(list(zip(records["wav_paths"], records["ref_spk_names"]), dynamic_ncols=True, desc="Saving files"))):
                 length = int(records["feature_lengths"][i])
                 fbank = np.array(records["predicted_features"][i])[:length]
+
+                # Path preparation
                 if split == "dev":
                     hdf5_save_path = os.path.join(hdf5_save_dir, "_".join(wav_path.split("/")[-2:]).replace(".wav", ".h5"))
                     wav_save_path = os.path.join(wav_save_dir, "_".join(wav_path.split("/")[-2:]))
@@ -209,7 +239,8 @@ class DownstreamExpert(nn.Module):
                 # save generated features into hdf5 files
                 write_hdf5(hdf5_save_path, "feats", fbank)
 
-                # mel fbank -> linear spectrogram
+                # Waveform generation from feature for reporting
+                ## mel fbank => linear spectrogram
                 spc = logmelspc_to_linearspc(
                     fbank,
                     fs=self.datarc["fbank_config"]["fs"],
@@ -218,7 +249,7 @@ class DownstreamExpert(nn.Module):
                     fmin=self.datarc["fbank_config"]["fmin"],
                     fmax=self.datarc["fbank_config"]["fmax"],
                 )
-                # apply griffin lim algorithm
+                ## linear spectrogram -> Griffin-Lim -> waveform
                 y = griffin_lim(
                     spc,
                     n_fft=self.datarc["fbank_config"]["n_fft"],
@@ -227,7 +258,7 @@ class DownstreamExpert(nn.Module):
                     window=self.datarc["fbank_config"]["window"],
                     n_iters=self.datarc["fbank_config"]["gl_iters"],
                 )
-                # save generated waveform
+                ## save
                 write(
                     wav_save_path,
                     self.datarc["fbank_config"]["fs"],

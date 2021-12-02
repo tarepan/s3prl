@@ -22,16 +22,33 @@ from resemblyzer import preprocess_wav, VoiceEncoder
 from .utils import logmelspectrogram
 from .utils import read_hdf5, write_hdf5
 
+
+# Hardcoded VCC2020 speaker names for evaluation
 SRCSPKS = ["SEF1", "SEF2", "SEM1", "SEM2"]
 TRGSPKS_TASK1 = ["TEF1", "TEF2", "TEM1", "TEM2"]
-FS = 16000 # Always resample to 16kHz
+
+# Hardcoded resampling rate
+FS = 16000
+
 
 def generate_eval_pairs(file_list, train_file_list, eval_data_root, num_samples):
+    """Generate VCC2020 adress pairs for evaluation.
+
+    Args:
+        file_list: Source file list
+        train_file_list: Target file list
+        eval_data_root: Root adress of evaluation data
+        num_samples: Number of evaluation target per source
+    Returns:
+        (List[[adress]]): #0 is source, #1~ are target
+    """
+    # X::Pair[]
     X = []
     for trgspk in TRGSPKS_TASK1:
-        # filter out those exist
+        # Target .wav file adress list of a speaker, filtered out those exist
         spk_file_list = []
         for number in train_file_list:
+            # eval_data_root / trgspk / f"{number}.wav"
             wav_path = os.path.join(eval_data_root, trgspk, number + ".wav")
             if os.path.isfile(wav_path):
                 spk_file_list.append(wav_path)
@@ -39,29 +56,56 @@ def generate_eval_pairs(file_list, train_file_list, eval_data_root, num_samples)
         for srcspk in SRCSPKS:
             for number in file_list:
                 random.shuffle(spk_file_list)
+                # Pair: [adress_src, adress_tgt_1, adress_tgt_2, ..., adress_tgt_num_samples]
+                # eval_data_root / srcspk / f"{number}.wav"
                 pair = [os.path.join(eval_data_root, srcspk, number + ".wav")]
                 pair.extend(spk_file_list[:num_samples])
                 X.append(pair)
     return X
 
+
 class VCTK_VCC2020Dataset(Dataset):
+    """dataset for a2a-vc-vctk task
+
+    Training:   VCTK
+    Evaluation: VCC2020
+    """
+
     def __init__(self, split, 
                  trdev_data_root, eval_data_root, spk_embs_root, 
                  lists_root, eval_lists_root,
                  fbank_config, spk_emb_source, num_ref_samples,
                  train_dev_seed=1337, **kwargs):
+        """
+        Prepare .wav paths, then generate speaker embedding if needed
+
+        Args:
+            trdev_data_root: Root adress of wav file for train/dev (VCTK)
+            eval_data_root: Root adress of wav file for evaluation (VCC2020)
+            lists_root: Root adress of utterance list
+            eval_lists_root: Root adress of evaluation utterance list
+            fbank_config: Filterback configurations
+            spk_emb_source ("external" | Any): Flag of embedding
+            train_dev_seed: Random seed, affect item order
+        """
         super(VCTK_VCC2020Dataset, self).__init__()
         self.split = split
         self.fbank_config = fbank_config
         self.spk_emb_source = spk_emb_source
         self.spk_embs_root = spk_embs_root
         os.makedirs(spk_embs_root, exist_ok=True)
-
+        # Prepare .wav paths
+        ## Train/dev: List of .wav adress
+        ## Test: List of evaluation adress pair
         X = []
         if split == 'train' or split == 'dev':
+            #  path: lists_root / f"{'train'|'dev'}_list.txt"
+            # file_list:: str[] (e.g. "p225_007")
             file_list = open(os.path.join(lists_root, split + '_list.txt')).read().splitlines()
             for fname in file_list:
+                # e.g. (spk, number) = ("p225", "007")
                 spk, number = fname.split("_")
+                # trdev_data_root / spk / f"{fname}.wav"
                 wav_path = os.path.join(trdev_data_root, spk, fname + ".wav")
                 X.append(wav_path)
             random.seed(train_dev_seed)
@@ -78,8 +122,11 @@ class VCTK_VCC2020Dataset(Dataset):
                 else:
                     print("[Dataset] eval pair list file does not exist: {}".format(eval_pair_list_file))
                     # generate eval pairs
+                    ## eval_lists_root / "eval_list.txt"
                     file_list = open(os.path.join(eval_lists_root, 'eval_list.txt')).read().splitlines()
+                    ## eval_lists_root / "E_train_list.txt"
                     train_file_list = open(os.path.join(eval_lists_root, 'E_train_list.txt')).read().splitlines()
+                    # Evaluation adress pairs
                     eval_pairs = generate_eval_pairs(file_list, train_file_list, eval_data_root, num_samples)
                     # write in file
                     with open(eval_pair_list_file, "w") as f:
@@ -90,7 +137,9 @@ class VCTK_VCC2020Dataset(Dataset):
             raise ValueError('Invalid \'split\' argument for dataset: VCTK_VCC2020Dataset!')
         print('[Dataset] - number of data for ' + split + ': ' + str(len(X)))
         self.X = X
+        # /Prepare .wav adress
 
+        # Be careful, `self.X` could be updated by `extract_spk_embs()`
         if spk_emb_source == "external":
             # extract spk embs beforehand
             print("[Dataset] Extracting speaker emebddings")
@@ -99,11 +148,14 @@ class VCTK_VCC2020Dataset(Dataset):
             NotImplementedError
 
     def extract_spk_embs(self):
+        """"Update path object, then generate and save embedding"""
         # load speaker encoder
         spk_encoder = VoiceEncoder()
 
         if self.split == "train" or self.split == "dev":
+            # [self.spk_embs_root / NNN.h5]
             spk_emb_paths = [os.path.join(self.spk_embs_root, os.path.basename(wav_path).replace(".wav", ".h5")) for wav_path in self.X]
+            # (".../NNN.wav", ".../NNN.h5")[]
             self.X = list(zip(self.X, spk_emb_paths))
             for wav_path, spk_emb_path in tqdm(self.X, dynamic_ncols=True, desc="Extracting speaker embedding"):
                 if not os.path.isfile(spk_emb_path):
@@ -131,14 +183,18 @@ class VCTK_VCC2020Dataset(Dataset):
             self.X = new_X
 
     def _load_wav(self, wav_path, fs):
+        """Load wav file with resampling if needed"""
         # use librosa to resample. librosa gives range [-1, 1]
         wav, sr = librosa.load(wav_path, sr=fs)
         return wav, sr
 
     def __len__(self):
+        """Number of .wav files (and same number of embeddings)"""
         return len(self.X)
 
     def get_all_lmspcs(self):
+        """Acquire log-mel spectrograms from all waveforms."""
+
         lmspcs = []
         for xs in tqdm(self.X, dynamic_ncols=True, desc="Extracting target acoustic features"):
             input_wav_path = xs[0]
@@ -159,10 +215,20 @@ class VCTK_VCC2020Dataset(Dataset):
         
 
     def __getitem__(self, index):
+        """
+        Returns:
+            input_wav_resample (ndarray): The waveform, could be resampled by `FS`
+            input_wav_original (ndarray): The waveform, acquired with sr=fbank_config["fs"]
+            lmspc: log-mel spectrogram
+            ref_spk_emb: Averaged speaker embedding
+            input_wav_path: Path of .wav file, modified when split==`test`
+            ref_spk_name:
+        """
         input_wav_path = self.X[index][0]
         spk_emb_paths = self.X[index][1:]
         ref_spk_name = os.path.basename(spk_emb_paths[0]).split("_")[0]
 
+        # FS: Target sampling rate (global variable)
         input_wav_original, _ = self._load_wav(input_wav_path, fs=self.fbank_config["fs"])
         input_wav_resample, fs_resample = self._load_wav(input_wav_path, fs=FS)
 
@@ -186,7 +252,7 @@ class VCTK_VCC2020Dataset(Dataset):
         else:
             ref_spk_emb = None
 
-        # change input wav path name
+        # Test split: change input wav path name
         if self.split == "test":
             input_wav_name = input_wav_path.replace(".wav", "")
             input_wav_path = input_wav_name + "_{}samples.wav".format(len(spk_emb_paths))
@@ -194,7 +260,24 @@ class VCTK_VCC2020Dataset(Dataset):
         return input_wav_resample, input_wav_original, lmspc, ref_spk_emb, input_wav_path, ref_spk_name
     
     def collate_fn(self, batch):
+        """collate function used by dataloader.
+
+        Sort data with feature time length, then pad features.
+        Args:
+            batch: (B, input_wav_resample, input_wav_original, lmspc, ref_spk_emb, input_wav_path, ref_spk_name)
+        Returns:
+            wavs: List[Tensor(`input_wav_resample`)]
+            wavs_2: List[Tensor(`input_wav_original`)]
+            acoustic_features: List[Tensor(`lmspc`)]
+            acoustic_features_padded: `acoustic_features` padded by PyTorch function
+            acoustic_feature_lengths: Tensor(feature time length)
+            wav_paths: List[`input_wav_path`]
+            ref_spk_embs: Tensor(`ref_spk_emb`)
+            ref_spk_names: List[`ref_spk_name`]
+        """
+
         sorted_batch = sorted(batch, key=lambda x: -x[1].shape[0])
+
         bs = len(sorted_batch) # batch_size
         wavs = [torch.from_numpy(sorted_batch[i][0]) for i in range(bs)]
         wavs_2 = [torch.from_numpy(sorted_batch[i][1]) for i in range(bs)] # This is used for obj eval
