@@ -37,56 +37,66 @@ More specifically, evaluation method is same as VCC2020 Task1.
 
 You can install them via the `requirements.txt` file.
 
-## Usage
+## Quick Training
+Jump to ☞ [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)][notebook], then Run. That's all!  
 
-### Preparation
-```
-# Download the VCTK and the VCC2020 datasets.
+## How to Use
+
+### 1. Install
+First you should set up `s3prl` itself (follow instructions in root README), then coutinue.  
+
+```bash
 cd <root-to-s3prl>/s3prl/downstream/a2a-vc-vctk
+pip install -r requirements.txt
+```
+
+### 2. Data & Preprocessing
+```bash
+# Download the VCTK and the VCC2020 datasets.
 cd data
 ./vcc2020_download.sh vcc2020/
 ./vctk_download.sh ./
 cd ../
 
-# Download the pretrained vocoders.
+# Download the pretrained HiFi-GAN.
 ./vocoder_download.sh ./
 ```
 
-### Training 
-The following command starts a training run given any `<upstream>`.
-```
-cd <root-to-s3prl>/s3prl
+### 3. Training
+`<upstream>` is wave2unit model, `<tag>` is arbitrary name.  
+
+```bash
+cd ../..
 ./downstream/a2a-vc-vctk/vc_train.sh <upstream> downstream/a2a-vc-vctk/config_ar_taco2.yaml <tag>
 ```
-Along the training process, you may find converted speech samples generated using the Griffin-Lim algorithm automatically saved in `<root-to-s3prl>/s3prl/result/downstream/a2a_vc_vctk_<tag>_<upstream>/<step>/test/wav/`.
-**NOTE**: to avoid extracting d-vectors on-the-fly (which is very slow), all d-vectors are extracted beforehand and saved in `data/spk_embs`. Since there are 44 hours of data in VCTK, the whole extraction can take a long time. On a NVIDIA GeForce RTX 3090, it takes 5-6 hours.
-**NOTE 2**: By default, during testing, the d-vector of the target speaker is the average of random samples from the training set, of number `num_ref_samples`. You can change this number in the config file. The list of samples is generated automatically and saved in `data/eval_<num>sample_list.txt`.
 
-### Waveform synthesis (decoding) using a neural vocoder & objective evaluation
+- output1: preprocessed d-vector @ `data/spk_embs` (it takes 5-6 hours on a RTX3090)
+- output2: Intermittently generated .wav w/ Griffin-Lim @ `<root-to-s3prl>/s3prl/result/downstream/a2a_vc_vctk_<tag>_<upstream>/<step>/test/wav/`
+
+**NOTE**: By default, during testing, the d-vector of the target speaker is the average of random samples from the training set, of number `num_ref_samples`. You can change this number in the config file. The list of samples is generated automatically and saved in `data/eval_<num>sample_list.txt`.  
+
+### 4. Evaluation: Waveform synthesis & objective metrics
 
 #### Single model checkpoint decoding & evaluation
-```
+```bash
 cd <root-to-s3prl>/s3prl
 ./downstream/a2a-vc-vctk/decode.sh <vocoder> <result_dir>/<step>
-```
-For example,
-```
-./downstream/a2a-vc-vctk/decode.sh ./downstream/a2a-vc-vctk/hifigan_vctk result/downstream/a2a_vc_vctk_taco2_ar_decoar2/50000
+# e.g. 
+# ./downstream/a2a-vc-vctk/decode.sh ./downstream/a2a-vc-vctk/hifigan_vctk result/downstream/a2a_vc_vctk_taco2_ar_decoar2/50000
 ```
 
 #### Upstream-wise decoding & evaluation
 The following command performs objective evaluation of a model trained with a specific number of steps.
-```
+```bash
 cd <root-to-s3prl>/s3prl
 ./downstream/a2a-vc-vctk/batch_vc_decode.sh <upstream> taco2_ar downstream/a2a-vc-vctk/hifigan_vctk
 ```
-If the command fails, please make sure there are trained results in `result/downstream/a2a_vc_vctk_<tag>_<upstream>/`. The generated speech samples will be saved in `<root-to-s3prl>/s3prl/result/downstream/a2a_vc_vctk_taco2_ar_<upstream>/<step>/hifigan_wav/`. 
 
-Also, the output of the evaluation will be shown directly:
-```
-decoar2 10 samples epoch 48000 best: 9.28 41.80 0.197 1.3 4.0 27.00
-```
-And detailed utterance-wise evaluation results can be found in `<root-to-s3prl>/s3prl/result/downstream/a2a_vc_vctk_taco2_ar_<upstream>/<step>/hifigan_wav/obj_10samples.log`.
+- output1: speech samples @ `<root-to-s3prl>/s3prl/result/downstream/a2a_vc_vctk_taco2_ar_<upstream>/<step>/hifigan_wav/`
+- output2: stdout (e.g. `decoar2 10 samples epoch 48000 best: 9.28 41.80 0.197 1.3 4.0 27.00`)
+- output3: detailed utterance-wise results @ `<root-to-s3prl>/s3prl/result/downstream/a2a_vc_vctk_taco2_ar_<upstream>/<step>/hifigan_wav/obj_10samples.log`
+
+If the command fails, please make sure there are trained results in `result/downstream/a2a_vc_vctk_<tag>_<upstream>/`.
 
 ## Related Tasks
 **A2O/any-to-one** recipe: [a2o-vc-vcc2020](../a2o-vc-vcc2020/)
