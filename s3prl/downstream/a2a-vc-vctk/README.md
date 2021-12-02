@@ -1,22 +1,30 @@
-# S3PRL-VC: open-source voice conversion framework with self-supervised speech representations
+<div align="center">
 
-Development: [Wen-Chin Huang](https://github.com/unilight) @ Nagoya University (2021).  
-If you have any questions, please open an issue, or contact through email: wen.chinhuang@g.sp.m.is.nagoya-u.ac.jp
+# Intra-lingual A2A VC / S3PRL-VC <!-- omit in toc -->
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)][notebook]
+[![Paper](http://img.shields.io/badge/paper-arxiv.2110.06280-B31B1B.svg)][paper]
 
-**Note**: This is the **any-to-any** recipe. For the **any-to-one** recipe, please go to the [a2o-vc-vcc2020](../a2o-vc-vcc2020/) recipe.
+</div>
+
+Intra-lingual Any-to-Any Voice Conversion based on S3PRL; S3PRL-VC.  
 
 ## Task
-
-In this downstream, we focus on training any-to-any (A2A) voice conversion (VC) models.
-We perform model training on the **VCTK** corpus, and evaluate on the _intra-lingual VC_ task in **voice conversion challenge 2020 (VCC2020)**.
-For more details about the intra-lingual VC task and the VCC2020 dataset, please refer to the original paper:
-
-- Yi, Z., Huang, W., Tian, X., Yamagishi, J., Das, R.K., Kinnunen, T., Ling, Z., Toda, T. (2020) Voice Conversion Challenge 2020 –- Intra-lingual semi-parallel and cross-lingual voice conversion –-. Proc. Joint Workshop for the Blizzard Challenge and Voice Conversion Challenge 2020, 80-98, DOI: 10.21437/VCC_BC.2020-14. [[paper](https://www.isca-speech.org/archive_v0/VCC_BC_2020/pdfs/VCC2020_paper_13.pdf)] [[database](https://github.com/nii-yamagishilab/VCC2020-database)]
-
+Intra-lingual A2A/any-to-any voice conversion.  
+Trained on **VCTK**, evaluated on **VCC2020**.  
+More specifically, evaluation method is same as VCC2020 Task1.  
 
 ## Implementation
 
-We only provide the config for the **Taco2-AR** model. It is essentialy a modified, attention-free Tacotron2 model. For the speaker embedding, we used a [d-vector](https://static.googleusercontent.com/media/research.google.com/zh-TW//pubs/archive/41939.pdf) implementation by the [Resemblyzer](https://github.com/resemble-ai/Resemblyzer). For the vocoder, we only offer the [Hifi-GAN](https://arxiv.org/abs/2010.05646), implemented in the [open source project](https://github.com/kan-bayashi/ParallelWaveGAN) developed by [kan-bayashi](https://github.com/kan-bayashi).
+- model:
+  - wave2mel: any S3PRL upstreams
+  - unit2mel: **Taco2-AR**
+    - speaker embedding: [d-vector] implementation by the [Resemblyzer]
+  - mel2wave: **[HiFi-GAN]**, [kan-bayashi's implementation][HiFi-GAN_impl]
+
+[d-vector]: https://static.googleusercontent.com/media/research.google.com/zh-TW//pubs/archive/41939.pdf
+[Resemblyzer]: https://github.com/resemble-ai/Resemblyzer
+[HiFi-GAN]: https://arxiv.org/abs/2010.05646
+[HiFi-GAN_impl]: https://github.com/kan-bayashi/ParallelWaveGAN
 
 ## Dependencies:
 
@@ -80,6 +88,9 @@ decoar2 10 samples epoch 48000 best: 9.28 41.80 0.197 1.3 4.0 27.00
 ```
 And detailed utterance-wise evaluation results can be found in `<root-to-s3prl>/s3prl/result/downstream/a2a_vc_vctk_taco2_ar_<upstream>/<step>/hifigan_wav/obj_10samples.log`.
 
+## Related Tasks
+**A2O/any-to-one** recipe: [a2o-vc-vcc2020](../a2o-vc-vcc2020/)
+
 ## Citation
 
 If you find this recipe useful, please consider citing following paper:
@@ -91,3 +102,11 @@ If you find this recipe useful, please consider citing following paper:
   year={2021}
 }
 ```
+
+## Contact
+Development: [Wen-Chin Huang](https://github.com/unilight) @ Nagoya University (2021).  
+If you have any questions, please open an issue, or contact through email: wen.chinhuang@g.sp.m.is.nagoya-u.ac.jp
+
+
+[paper]: https://arxiv.org/abs/2110.06280
+[notebook]: https://colab.research.google.com/github/tarepan/s3prl/blob/master/s3prl/downstream/a2a-vc-vctk/training.ipynb
