@@ -26,17 +26,6 @@ More specifically, evaluation method is same as VCC2020 Task1.
 [HiFi-GAN]: https://arxiv.org/abs/2010.05646
 [HiFi-GAN_impl]: https://github.com/kan-bayashi/ParallelWaveGAN
 
-## Dependencies:
-
-- `parallel-wavegan`
-- `fastdtw`
-- `pyworld`
-- `pysptk`
-- `jiwer`
-- `resemblyzer`
-
-You can install them via the `requirements.txt` file.
-
 ## Quick Training
 Jump to ☞ [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)][notebook], then Run. That's all!  
 
