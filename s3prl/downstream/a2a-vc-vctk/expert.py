@@ -36,7 +36,7 @@ class Loss(nn.Module):
     def __init__(self, stats):
         """
         Args:
-            stats: Mean and Scale statistics for normalization
+            stats (`StandardScaler`): Mean and Scale statistics for normalization
         """
         super(Loss, self).__init__()
         self.objective = torch.nn.L1Loss(reduction="mean")
@@ -91,18 +91,28 @@ class DownstreamExpert(nn.Module):
         # load statistics file if exists, and calculate if not found
         scaler = StandardScaler()
         stats_root = self.datarc["stats_root"]
+        ## Root directory
         if not os.path.exists(stats_root):
             os.makedirs(stats_root)
         stats_path = os.path.join(stats_root, "stats.h5")
+        ## Load from file
         if os.path.exists(stats_path):
             print("[Stats] - reading stats from " + str(stats_path))
             scaler.mean_ = read_hdf5(stats_path, "mean")
             scaler.scale_ = read_hdf5(stats_path, "scale")
+        ## Newly calculate and save
         else:
+            # ※ Need high memory because extract all specs at once and calculate big stats
+            # Prepare log-mel-spec
             print("[Stats] - " + str(stats_path) + " does not exist. Reading data...")
+            # [(Time, MelFreq)] => (Uttr, Time, MelFreq)
             lmspcs = np.concatenate(self.train_dataset.get_all_lmspcs(), axis=0)
+
+            # Compute the mean and std (c.f. 'sklearn.preprocessing.StandardScaler.fit')
             print("[Stats] - " + str(stats_path) + " does not exist. Calculating statistics...")
             scaler.fit(lmspcs)
+
+            # Save
             write_hdf5(stats_path, "mean", scaler.mean_.astype(np.float32))
             write_hdf5(stats_path, "scale", scaler.scale_.astype(np.float32))
             print("[Stats] - writing stats to " + str(stats_path))
