@@ -253,7 +253,7 @@ class DownstreamExpert(nn.Module):
             os.makedirs(wav_save_dir, exist_ok=True)
 
             # wav_path in `records["wav_paths"]` & ref_spk_name in records["ref_spk_names"]
-            for i, (wav_path, ref_spk_name) in enumerate(tqdm(list(zip(records["wav_paths"], records["ref_spk_names"]), dynamic_ncols=True, desc="Saving files"))):
+            for i, (wav_path, ref_spk_name) in enumerate(tqdm(list(zip(records["wav_paths"], records["ref_spk_names"])), dynamic_ncols=True, desc="Saving files")):
                 length = int(records["feature_lengths"][i])
                 fbank = np.array(records["predicted_features"][i])[:length]
 
