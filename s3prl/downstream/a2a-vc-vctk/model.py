@@ -9,6 +9,9 @@
 """*********************************************************************************************"""
 
 
+"""Basically same with A2O model, but embedding is added. 'Added for A2A' are annotation of the differences."""
+
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -286,8 +289,10 @@ class Model(nn.Module):
                  lstmp_dropout_rate,
                  lstmp_proj_dim,
                  lstmp_layernorm,
+                 # 'Added for A2A'
                  spk_emb_integration_type,
                  spk_emb_dim,
+                 # /
                  prenet_layers=2,
                  prenet_dim=256,
                  prenet_dropout_rate=0.5,
@@ -299,10 +304,12 @@ class Model(nn.Module):
         self.hidden_dim = hidden_dim # this is also the decoder output dim
         self.output_dim = output_dim # acoustic feature dim
         self.resample_ratio = resample_ratio
+        # 'Added for A2A'
         self.spk_emb_integration_type = spk_emb_integration_type
         self.spk_emb_dim = spk_emb_dim
         if spk_emb_integration_type == "add":
             assert spk_emb_dim == hidden_dim
+        # /
 
         self.register_buffer("target_mean", torch.from_numpy(stats.mean_).float())
         self.register_buffer("target_scale", torch.from_numpy(stats.scale_).float())
@@ -317,7 +324,8 @@ class Model(nn.Module):
             )
         else:
             raise ValueError("Encoder type not supported.")
-        
+
+        # 'Added for A2A'
         # define projection layer
         if self.spk_emb_integration_type == "add":
             self.spk_emb_projection = torch.nn.Linear(spk_emb_dim, hidden_dim)
@@ -327,7 +335,8 @@ class Model(nn.Module):
             )
         else:
             raise ValueError("Integration type not supported.")
-        
+        # /
+
         # define prenet
         self.prenet = Taco2Prenet(
             idim=output_dim,
@@ -370,6 +379,7 @@ class Model(nn.Module):
     def normalize(self, x):
         return (x - self.target_mean) / self.target_scale
     
+    # 'Added for A2A'
     def _integrate_with_spk_emb(self, hs, spembs):
         """Integrate speaker embedding with hidden states.
             Args:
@@ -388,7 +398,9 @@ class Model(nn.Module):
             raise NotImplementedError("support only add or concat.")
 
         return hs
+    # /
 
+    # 'Added for A2A': `ref_spk_embs` /
     def forward(self, features, lens, ref_spk_embs, targets = None):
         """Calculate forward propagation.
             Args:
@@ -410,9 +422,11 @@ class Model(nn.Module):
         elif self.encoder_type == "ffn":
             encoder_states = self.encoder(resampled_features) # (B, Lmax, hidden_dim)
 
+        # 'Added for A2A'
         # inject speaker embeddings
         encoder_states = self._integrate_with_spk_emb(encoder_states, ref_spk_embs)
-        
+        # /
+
         # decoder: LSTMP layers & projection
         if self.ar:
             if targets is not None:
