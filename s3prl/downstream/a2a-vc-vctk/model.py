@@ -297,6 +297,10 @@ class Model(nn.Module):
                  prenet_dim=256,
                  prenet_dropout_rate=0.5,
                  **kwargs):
+        """
+        Args:
+            stats (`Stat`): Statistics object for normalization
+        """
         super(Model, self).__init__()
 
         self.ar = ar
@@ -311,6 +315,7 @@ class Model(nn.Module):
             assert spk_emb_dim == hidden_dim
         # /
 
+        # Normalization parameters
         self.register_buffer("target_mean", torch.from_numpy(stats.mean_).float())
         self.register_buffer("target_scale", torch.from_numpy(stats.scale_).float())
 
