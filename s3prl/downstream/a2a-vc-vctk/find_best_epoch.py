@@ -6,6 +6,10 @@
 #   Copyright    [ Copyright(c), Toda Lab, Nagoya University, Japan ]
 """*********************************************************************************************"""
 
+
+"""Find best score logged in log file."""
+
+
 import argparse
 from io import open
 import os

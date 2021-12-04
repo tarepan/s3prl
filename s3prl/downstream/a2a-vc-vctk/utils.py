@@ -379,7 +379,11 @@ def griffin_lim(spc, n_fft, n_shift, win_length, window="hann", n_iters=100):
 def stft(
     x, n_fft, n_shift, win_length=None, window="hann", center=True, pad_mode="reflect"
 ):
-    # x: [Time, Channel]
+    """STFT.
+
+    This function can handle multi-channel waveform (e.g. Left&Right channels)
+    """
+    # x: [Time] | [Time, Channel]
     if x.ndim == 1:
         single_channel = True
         # x: [Time] -> [Time, Channel]
@@ -440,7 +444,14 @@ def logmelspectrogram(
     eps=1e-10,
     pad_mode="reflect",
 ):
-    # stft: (Time, Channel, Freq) or (Time, Freq)
+    """Calculate log-mel spectrogram.
+
+    Args:
+        x ([Time, Channel] | [Time]): Single- or Multi-channel waveform
+    Returns:
+        (Time, Channel, Mel_freq) | (Time, Mel_freq) log-mel spectrogram
+    """
+    # (Time, Channel) | (Time) => (Time, Channel, Freq) | (Time, Freq)
     x_stft = stft(
         x,
         n_fft=n_fft,
@@ -450,6 +461,7 @@ def logmelspectrogram(
         pad_mode=pad_mode,
     )
 
+    # (Time, Channel, Freq) | (Time, Freq) => (Time, Channel, Mel_freq) | (Time, Mel_freq)
     return stft2logmelspectrogram(
         x_stft, fs=fs, n_mels=n_mels, n_fft=n_fft, fmin=fmin, fmax=fmax, eps=eps
     )

@@ -250,6 +250,7 @@ class Runner():
 
         # progress bar
         tqdm_file = sys.stderr if is_leader_process() else open(os.devnull, 'w')
+        ## `pbar`: Bar of whole training steps
         pbar = tqdm(total=self.config['runner']['total_steps'], dynamic_ncols=True, desc='overall', file=tqdm_file)
         init_step = self.init_ckpt.get('Step')
         if init_step:
@@ -265,6 +266,7 @@ class Runner():
         epoch = self.init_ckpt.get('Epoch', 0)
         train_split = self.config['runner'].get("train_dataloader", "train")
         while pbar.n < pbar.total:
+            # ==== epoch ==========================================================================
             try:
                 dataloader = self.downstream.model.get_dataloader(train_split, epoch=epoch)
             except TypeError as e:
@@ -276,13 +278,19 @@ class Runner():
                     raise
 
             for batch_id, (wavs, *others) in enumerate(tqdm(dataloader, dynamic_ncols=True, desc='train', file=tqdm_file)):
+                # ==== step ==================================================================
                 # try/except block for forward/backward
                 try:
+                    # Training finish
                     if pbar.n >= pbar.total:
                         break
+
                     global_step = pbar.n + 1
 
+                    # Input
                     wavs = [torch.FloatTensor(wav).to(self.args.device) for wav in wavs]
+
+                    # Forward/Upstream
                     if self.upstream.trainable:
                         features = self.upstream.model(wavs)
                     else:
@@ -293,6 +301,7 @@ class Runner():
                     if specaug:
                         features, _ = specaug(features)
 
+                    # Forward/Downstream_and_Loss
                     loss = self.downstream.model(
                         train_split,
                         features, *others,
@@ -301,6 +310,8 @@ class Runner():
                     batch_ids.append(batch_id)
 
                     gradient_accumulate_steps = self.config['runner'].get('gradient_accumulate_steps')
+
+                    # Backward
                     (loss / gradient_accumulate_steps).backward()
                     del loss
 
@@ -397,9 +408,11 @@ class Runner():
                         tqdm.write(f'{i + 1}. {path}')
                         torch.save(all_states, path)
 
+                # Explicitly tick global step progress bar
                 pbar.update(1)
+                # ==== /step =================================================================
             epoch += 1
-
+            # ==== /epoch =========================================================================
         pbar.close()
 
         if self.args.push_to_hf_hub:

@@ -8,6 +8,9 @@
 # Copyright 2020 Tomoki Hayashi
 #  MIT License (https://opensource.org/licenses/MIT)
 
+# Check decompressed directory, download VCTK, decompress, then delete the archive file.
+
+
 download_dir=$1
 
 # check arguments

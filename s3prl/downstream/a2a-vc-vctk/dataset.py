@@ -79,6 +79,8 @@ class VCTK_VCC2020Dataset(Dataset):
         """
         Prepare .wav paths, then generate speaker embedding if needed
 
+        Data split: train/dev/test = [:-11, -5:, -10:-5] for each speaker
+
         Args:
             trdev_data_root: Root adress of wav file for train/dev (VCTK)
             eval_data_root: Root adress of wav file for evaluation (VCC2020)
@@ -99,8 +101,9 @@ class VCTK_VCC2020Dataset(Dataset):
         ## Test: List of evaluation adress pair
         X = []
         if split == 'train' or split == 'dev':
-            #  path: lists_root / f"{'train'|'dev'}_list.txt"
-            # file_list:: str[] (e.g. "p225_007")
+            # Read split list, convert to path, then shuffle.
+            ## path: lists_root / f"{'train'|'dev'}_list.txt"
+            ## file_list:: str[] (e.g. "p225_007")
             with open(os.path.join(lists_root, split + '_list.txt')) as f:
                 file_list = f.read().splitlines()
             for fname in file_list:
@@ -114,6 +117,7 @@ class VCTK_VCC2020Dataset(Dataset):
         elif split == 'test':
             for num_samples in num_ref_samples:
                 # goal: save converted samples with diff num of ref samples to different folders?
+                # lists_root / f"eval_{num_samples}sample_list.txt"
                 eval_pair_list_file = os.path.join(lists_root, "eval_{}sample_list.txt".format(num_samples))
                 if os.path.isfile(eval_pair_list_file):
                     print("[Dataset] eval pair list file exists: {}".format(eval_pair_list_file))
@@ -186,8 +190,16 @@ class VCTK_VCC2020Dataset(Dataset):
             self.X = new_X
 
     def _load_wav(self, wav_path, fs):
-        """Load wav file with resampling if needed"""
+        """Load wav file with resampling if needed
+
+        Args:
+            wav_path: Adress of waveform
+            fs: Sampling frequency
+        Returns:
+            (Time) Single-channel waveform
+        """
         # use librosa to resample. librosa gives range [-1, 1]
+        # mono=True in default, so this is single-channel waveform
         wav, sr = librosa.load(wav_path, sr=fs)
         return wav, sr
 
@@ -196,12 +208,18 @@ class VCTK_VCC2020Dataset(Dataset):
         return len(self.X)
 
     def get_all_lmspcs(self):
-        """Acquire log-mel spectrograms from all waveforms."""
+        """Acquire log-mel spectrograms from all waveforms.
+
+        Returns:
+            [(Time, MelFreq)] List of log-mel spectrogram
+        """
 
         lmspcs = []
         for xs in tqdm(self.X, dynamic_ncols=True, desc="Extracting target acoustic features"):
             input_wav_path = xs[0]
+            # (Time), (Time)
             input_wav_original, fs_original = self._load_wav(input_wav_path, fs=None)
+            # (Time) => (Time, MelFreq)
             lmspc = logmelspectrogram(
                 x=input_wav_original,
                 fs=fs_original,
@@ -219,6 +237,8 @@ class VCTK_VCC2020Dataset(Dataset):
 
     def __getitem__(self, index):
         """
+        Load raw waveform, resampled waveform and log-mel-spec in place (not preprocessed).
+
         Returns:
             input_wav_resample (ndarray): The waveform, could be resampled by `FS`
             input_wav_original (ndarray): The waveform, acquired with sr=fbank_config["fs"]

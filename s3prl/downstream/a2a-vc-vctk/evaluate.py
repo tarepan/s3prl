@@ -7,6 +7,9 @@
 """*********************************************************************************************"""
 
 
+"""Objective evaluation with VCC2020 task1/2 method"""
+
+
 import argparse
 import multiprocessing as mp
 import os
