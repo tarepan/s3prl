@@ -66,7 +66,8 @@ cd ../..
 
 ### 4. Evaluation: Waveform synthesis & objective metrics
 
-#### Single model checkpoint decoding & evaluation
+#### 4-A. Waveform synthesis and objective evaluation
+Synthesize waveforms from already generated spectrograms and objectively evaluate them.  
 ```bash
 cd <root-to-s3prl>/s3prl
 ./downstream/a2a-vc-vctk/decode.sh <vocoder> <result_dir>/<step>
@@ -74,8 +75,8 @@ cd <root-to-s3prl>/s3prl
 # ./downstream/a2a-vc-vctk/decode.sh ./downstream/a2a-vc-vctk/hifigan_vctk result/downstream/a2a_vc_vctk_taco2_ar_decoar2/50000
 ```
 
-#### Upstream-wise decoding & evaluation
-The following command performs objective evaluation of a model trained with a specific number of steps.
+#### 4-B. Search best epoch
+Run 4-A over epochs and report the best epoch.  
 ```bash
 cd <root-to-s3prl>/s3prl
 ./downstream/a2a-vc-vctk/batch_vc_decode.sh <upstream> taco2_ar downstream/a2a-vc-vctk/hifigan_vctk

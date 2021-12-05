@@ -246,6 +246,7 @@ def main():
                     )
                 )
 
+        # Report and write mean scores
         if task == "task1":
             print(
                 "Mean MCD, f0RMSE, f0CORR, DDUR, CER, WER, accept rate: {:.2f} {:.2f} {:.3f} {:.3f} {:.1f} {:.1f} {:.2f}".format(

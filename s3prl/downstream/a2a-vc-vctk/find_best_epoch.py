@@ -39,6 +39,12 @@ def get_parser():
 
 
 def grep(filepath, query):
+    """
+    Search `query` in each line of given file.
+
+    Args:
+        filepath: Adress of grep target file
+    """
     lines = []
     with open(filepath, "r") as f:
         for line in f:
@@ -48,6 +54,8 @@ def grep(filepath, query):
 
 
 if __name__ == "__main__":
+    """Report objective score of the best model which is searched from epochs."""
+
     parser = get_parser()
     args = parser.parse_args()
 
@@ -55,7 +63,10 @@ if __name__ == "__main__":
 
     scores = []
     for ep in epochs:
+        # args.expdir / f"a2a_vc_vctk_{args.tag}_{args.upstream}" /
+        #     f"{ep}" / f"{args.vocoder}_wav" / f"obj_{args.num_samples}samples.log"
         log_file = os.path.join(args.expdir, f"a2a_vc_vctk_{args.tag}_{args.upstream}", str(ep), f"{args.vocoder}_wav", f"obj_{args.num_samples}samples.log")
+        # result::List[score]
         if args.task == "task1":
             result = grep(log_file, "Mean")[0].split("Mean MCD, f0RMSE, f0CORR, DDUR, CER, WER, accept rate: ")[1].split(" ")
         elif args.task == "task2":

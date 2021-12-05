@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# Evaluation of Task1 (Intra-lingual VC)
 task="task1"
 
 upstream=$1
@@ -14,6 +15,7 @@ if [ $# != 3 ]; then
     exit 1
 fi
 
+# [20k, 22k, 24k, ..., 50000]
 start_ep=20000
 #start_ep=10000
 interval=2000
@@ -25,6 +27,7 @@ elif [ ${task} == "task2" ]; then
     trgspks=("TFF1" "TFM1" "TGF1" "TGM1" "TMF1" "TMM1")
 fi
 
+# Waveform generation and evaluation (run `decode.sh`)
 for ep in $(seq ${start_ep} ${interval} ${end_ep}); do
     echo "Objective evaluation: Ep ${ep}"
     expname=a2a_vc_vctk_${tag}_${upstream}
@@ -34,6 +37,7 @@ done
 
 voc_name=$(basename ${vocoder} | cut -d"_" -f 1)
 
+# Report best score to CLI
 python downstream/a2a-vc-vctk/find_best_epoch.py \
     --start_epoch ${start_ep} \
     --end_epoch ${end_ep} \
