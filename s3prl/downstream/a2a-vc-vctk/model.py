@@ -38,7 +38,6 @@ class Taco2Encoder(torch.nn.Module):
        https://arxiv.org/abs/1712.05884
 
     """
-    # bidirectional: bool = True
 
     def __init__(
         self,
@@ -51,21 +50,22 @@ class Taco2Encoder(torch.nn.Module):
         use_batch_norm: bool = True,
         use_residual: bool = False,
         dropout_rate: float = 0.5,
+        bidirectional: bool = True,
     ):
         """Initialize Tacotron2 encoder module.
 
         By default, model is segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1biLSTM512
         Args:
             idim: Dimension of the inputs.
-            elayers: The number of encoder blstm layers.
-            eunits:  The number of encoder blstm units.
+            elayers: The number of encoder LSTM layers.
+            eunits:  The number of encoder LSTM units.
             econv_layers: The number of encoder conv layers.
             econv_filts:  The number of encoder conv filter size.
             econv_chans:  The number of encoder conv filter channels.
             use_batch_norm: Whether to use batch normalization.
             use_residual: Whether to use residual connection.
             dropout_rate: Dropout rate.
-
+            bidirectional: Whether LSTM is bidirectional or not.
         """
         super(Taco2Encoder, self).__init__()
         # store the hyperparameters
@@ -117,12 +117,14 @@ class Taco2Encoder(torch.nn.Module):
         else:
             self.convs = None
 
-        # blstm: [NbiLSTM]
+        # blstm: [N-LSTM]
         if elayers > 0:
             iunits = econv_chans if econv_layers != 0 else embed_dim
+            dim_lstm = eunits // 2 if bidirectional else eunits
             self.blstm = torch.nn.LSTM(
-                iunits, eunits // 2, elayers, batch_first=True, bidirectional=True
+                iunits, dim_lstm, elayers, batch_first=True, bidirectional=bidirectional
             )
+            print(f"Encoder LSTM: {'bidi' if bidirectional else 'uni'}")
         else:
             self.blstm = None
 
@@ -344,10 +346,12 @@ class Model(nn.Module):
                  prenet_layers=2,
                  prenet_dim=256,
                  prenet_dropout_rate=0.5,
+                 enc_bidi: bool = True,
                  **kwargs):
         """
         Args:
             stats (`Stat`): Statistics object for normalization
+            enc_bidi: Whether Encoder LSTM is bidirectional or not. 
         """
         super(Model, self).__init__()
 
@@ -370,8 +374,8 @@ class Model(nn.Module):
         # Encoder
         ## `Taco2-AR`: segFC-Conv-biLSTM
         if encoder_type == "taco2":
-            # model: segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1biLSTM`h`, `h` stand for `hidden_dim`
-            self.encoder = Taco2Encoder(input_dim, eunits=hidden_dim)
+            # model: segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1LSTM`h`, `h` stand for `hidden_dim`
+            self.encoder = Taco2Encoder(input_dim, eunits=hidden_dim, bidirectional=enc_bidi)
         elif encoder_type == "ffn":
             ## `simple` | `simple-AR`: segFC-ReLU
             self.encoder = torch.nn.Sequential(
