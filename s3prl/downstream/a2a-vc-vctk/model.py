@@ -38,32 +38,33 @@ class Taco2Encoder(torch.nn.Module):
        https://arxiv.org/abs/1712.05884
 
     """
+    # bidirectional: bool = True
 
     def __init__(
         self,
-        idim,
-        elayers=1,
-        eunits=512,
-        econv_layers=3,
-        econv_chans=512,
-        econv_filts=5,
-        use_batch_norm=True,
-        use_residual=False,
-        dropout_rate=0.5,
+        idim: int,
+        elayers: int = 1,
+        eunits: int = 512,
+        econv_layers: int = 3,
+        econv_chans: int = 512,
+        econv_filts: int = 5,
+        use_batch_norm: bool = True,
+        use_residual: bool = False,
+        dropout_rate: float = 0.5,
     ):
         """Initialize Tacotron2 encoder module.
 
         By default, model is segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1biLSTM512
         Args:
-            idim (int) Dimension of the inputs.
-            elayers (int, optional) The number of encoder blstm layers.
-            eunits (int, optional) The number of encoder blstm units.
-            econv_layers (int, optional) The number of encoder conv layers.
-            econv_filts (int, optional) The number of encoder conv filter size.
-            econv_chans (int, optional) The number of encoder conv filter channels.
-            use_batch_norm (bool, optional) Whether to use batch normalization.
-            use_residual (bool, optional) Whether to use residual connection.
-            dropout_rate (float, optional) Dropout rate.
+            idim: Dimension of the inputs.
+            elayers: The number of encoder blstm layers.
+            eunits:  The number of encoder blstm units.
+            econv_layers: The number of encoder conv layers.
+            econv_filts:  The number of encoder conv filter size.
+            econv_chans:  The number of encoder conv filter channels.
+            use_batch_norm: Whether to use batch normalization.
+            use_residual: Whether to use residual connection.
+            dropout_rate: Dropout rate.
 
         """
         super(Taco2Encoder, self).__init__()
@@ -177,7 +178,7 @@ class Taco2Prenet(torch.nn.Module):
 
     """
 
-    def __init__(self, idim, n_layers=2, n_units=256, dropout_rate=0.5):
+    def __init__(self, idim, n_layers:int=2, n_units:int=256, dropout_rate:float=0.5):
         """
         By default, model is (FC256-ReLU-DO_0.5)x2
         """
@@ -275,7 +276,7 @@ class RNNLayer(nn.Module):
 class RNNCell(nn.Module):
     ''' RNN cell wrapper'''
 
-    def __init__(self, input_dim, module, dim, dropout, layer_norm, proj):
+    def __init__(self, input_dim, module, dim, dropout:float, layer_norm:bool, proj:bool):
         super(RNNCell, self).__init__()
         # Setup
         rnn_out_dim = dim
