@@ -30,6 +30,9 @@ def encoder_init(m):
 class Taco2Encoder(torch.nn.Module):
     """Encoder module of the Tacotron2 TTS model.
 
+    Model: segFC[-(Res(Conv1d[-BN]-ReLU-DO))xN][-MbiLSTM]
+    Variants are switched by arguments.
+
     Reference:
     _`Natural TTS Synthesis by Conditioning WaveNet on Mel Spectrogram Predictions`_
        https://arxiv.org/abs/1712.05884
@@ -50,6 +53,7 @@ class Taco2Encoder(torch.nn.Module):
     ):
         """Initialize Tacotron2 encoder module.
 
+        By default, model is segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1biLSTM512
         Args:
             idim (int) Dimension of the inputs.
             elayers (int, optional) The number of encoder blstm layers.
@@ -67,13 +71,16 @@ class Taco2Encoder(torch.nn.Module):
         self.idim = idim
         self.use_residual = use_residual
 
-        # define network layer modules
+        # segFC linear
         self.input_layer = torch.nn.Linear(idim, econv_chans)
 
+        # convs: [(Conv1d[-BN]-ReLU-DO)xN]
         if econv_layers > 0:
             self.convs = torch.nn.ModuleList()
             for layer in range(econv_layers):
                 ichans = econv_chans
+                # BN on/off, remaining is totally same
+                ## BN (+)
                 if use_batch_norm:
                     self.convs += [
                         torch.nn.Sequential(
@@ -90,6 +97,7 @@ class Taco2Encoder(torch.nn.Module):
                             torch.nn.Dropout(dropout_rate),
                         )
                     ]
+                ## BN (-)
                 else:
                     self.convs += [
                         torch.nn.Sequential(
@@ -107,6 +115,8 @@ class Taco2Encoder(torch.nn.Module):
                     ]
         else:
             self.convs = None
+
+        # blstm: [NbiLSTM]
         if elayers > 0:
             iunits = econv_chans if econv_layers != 0 else embed_dim
             self.blstm = torch.nn.LSTM(
@@ -123,14 +133,19 @@ class Taco2Encoder(torch.nn.Module):
         Args:
             xs (Tensor): Batch of the padded acoustic feature sequence (B, Lmax, idim)
         """
+
+        # segFC linear
         xs = self.input_layer(xs).transpose(1, 2)
 
+        # Conv
         if self.convs is not None:
             for i in range(len(self.convs)):
                 if self.use_residual:
                     xs += self.convs[i](xs)
                 else:
                     xs = self.convs[i](xs)
+
+        # LSTM
         if self.blstm is None:
             return xs.transpose(1, 2)
         if not isinstance(ilens, torch.Tensor):
@@ -144,6 +159,9 @@ class Taco2Encoder(torch.nn.Module):
 
 class Taco2Prenet(torch.nn.Module):
     """Prenet module for decoder of Tacotron2.
+
+    Model: (FC-ReLU-DO)xN | DO
+    Variants are switched by arguments.
 
     The Prenet preforms nonlinear conversion
     of inputs before input to auto-regressive lstm,
@@ -160,12 +178,16 @@ class Taco2Prenet(torch.nn.Module):
     """
 
     def __init__(self, idim, n_layers=2, n_units=256, dropout_rate=0.5):
+        """
+        By default, model is (FC256-ReLU-DO_0.5)x2
+        """
         super(Taco2Prenet, self).__init__()
         self.dropout_rate = dropout_rate
         self.prenet = torch.nn.ModuleList()
         for layer in range(n_layers):
             n_inputs = idim if layer == 0 else n_units
             self.prenet += [
+                # FC-ReLU
                 torch.nn.Sequential(torch.nn.Linear(n_inputs, n_units), torch.nn.ReLU())
             ]
 
@@ -181,9 +203,23 @@ class Taco2Prenet(torch.nn.Module):
 ################################################################################
 
 class RNNLayer(nn.Module):
-    ''' RNN wrapper, includes time-downsampling'''
+    ''' RNN wrapper, includes time-downsampling
+    
+    Model: 1RNN[-LN][-DO][-DownSample][-FC-Tanh]
+    '''
 
-    def __init__(self, input_dim, module, bidirection, dim, dropout, layer_norm, sample_rate, proj):
+    def __init__(self, input_dim, module: str, bidirection, dim, dropout, layer_norm: bool, sample_rate, proj: bool):
+        """
+        Args:
+            input_dim
+            module: module name for dynamic RNN type switching ...? (e.g."LSTM")
+            bidirection
+            dim
+            dropout: Dropout probability
+            layer_norm: Whether to use LayerNormalization
+            sample_rate: downsample if >1 else None
+            proj: Whether to use non-linear projection
+        """
         super(RNNLayer, self).__init__()
         # Setup
         rnn_out_dim = 2 * dim if bidirection else dim
@@ -193,7 +229,7 @@ class RNNLayer(nn.Module):
         self.sample_rate = sample_rate
         self.proj = proj
 
-        # Recurrent layer
+        # RNN: 1RNN
         self.layer = getattr(nn, module.upper())(
             input_dim, dim, bidirectional=bidirection, num_layers=1, batch_first=True)
 
@@ -203,16 +239,15 @@ class RNNLayer(nn.Module):
         if self.dropout > 0:
             self.dp = nn.Dropout(p=dropout)
 
-        # Additional projection layer
+        # Projection: FC-Tanh
         if self.proj:
             self.pj = nn.Linear(rnn_out_dim, rnn_out_dim)
 
     def forward(self, input_x, x_len):
 
-        # Forward RNN
+        # RNN
         if not self.training:
             self.layer.flatten_parameters()
-
         input_x = pack_padded_sequence(input_x, x_len, batch_first=True, enforce_sorted=False)
         output, _ = self.layer(input_x)
         output, x_len = pad_packed_sequence(output, batch_first=True)
@@ -220,13 +255,17 @@ class RNNLayer(nn.Module):
         # Normalizations
         if self.layer_norm:
             output = self.ln(output)
+
+        # Dropout
         if self.dropout > 0:
             output = self.dp(output)
 
         # Perform Downsampling
         if self.sample_rate > 1:
+            # Now not defined anywhere...?
             output, x_len = downsample(output, x_len, self.sample_rate, 'drop')
 
+        # Projection
         if self.proj:
             output = torch.tanh(self.pj(output))
 
@@ -245,27 +284,28 @@ class RNNCell(nn.Module):
         self.layer_norm = layer_norm
         self.proj = proj
 
-        # Recurrent cell
+        # RNN cell
         self.cell = getattr(nn, module.upper()+"Cell")(input_dim, dim)
 
-        # Regularizations
+        # Normalization
         if self.layer_norm:
             self.ln = nn.LayerNorm(rnn_out_dim)
+
+        # Dropout
         if self.dropout > 0:
             self.dp = nn.Dropout(p=dropout)
 
-        # Additional projection layer
+        # Projection: FC-Tanh
         if self.proj:
             self.pj = nn.Linear(rnn_out_dim, rnn_out_dim)
     
     def forward(self, input_x, z, c):
 
-        # Forward RNN cell
         new_z, new_c = self.cell(input_x, (z, c))
 
-        # Normalizations
         if self.layer_norm:
             new_z = self.ln(new_z)
+
         if self.dropout > 0:
             new_z = self.dp(new_z)
 
@@ -277,6 +317,13 @@ class RNNCell(nn.Module):
 ################################################################################
 
 class Model(nn.Module):
+    """
+    S3PRL-VC model.
+
+    `Taco2-AR`: segFC-3Conv-1biLSTM-cat_(z_t, AR-segFC)-NuniLSTM-segFC-segLinear
+    segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1biLSTM-cat_(z_t, AR-norm-(segFC-ReLU-DO)xN)-(1uniLSTM[-LN][-DO]-segFC-Tanh)xL-segFC
+    """
+
     def __init__(self,
                  input_dim,
                  output_dim,
@@ -285,10 +332,10 @@ class Model(nn.Module):
                  ar,
                  encoder_type,
                  hidden_dim,
-                 lstmp_layers,
+                 lstmp_layers: int,
                  lstmp_dropout_rate,
                  lstmp_proj_dim,
-                 lstmp_layernorm,
+                 lstmp_layernorm: bool,
                  # 'Added for A2A'
                  spk_emb_integration_type,
                  spk_emb_dim,
@@ -319,10 +366,13 @@ class Model(nn.Module):
         self.register_buffer("target_mean", torch.from_numpy(stats.mean_).float())
         self.register_buffer("target_scale", torch.from_numpy(stats.scale_).float())
 
-        # define encoder
+        # Encoder
+        ## `Taco2-AR`: segFC-Conv-biLSTM
         if encoder_type == "taco2":
+            # model: segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1biLSTM`h`, `h` stand for `hidden_dim`
             self.encoder = Taco2Encoder(input_dim, eunits=hidden_dim)
         elif encoder_type == "ffn":
+            ## `simple` | `simple-AR`: segFC-ReLU
             self.encoder = torch.nn.Sequential(
                 torch.nn.Linear(input_dim, hidden_dim),
                 torch.nn.ReLU()
@@ -342,7 +392,8 @@ class Model(nn.Module):
             raise ValueError("Integration type not supported.")
         # /
 
-        # define prenet
+        # Decoder
+        ## PreNet, `Taco2-AR` only: (segFC-ReLU-DO)xN
         self.prenet = Taco2Prenet(
             idim=output_dim,
             n_layers=prenet_layers,
@@ -350,7 +401,8 @@ class Model(nn.Module):
             dropout_rate=prenet_dropout_rate,
         )
 
-        # define decoder (LSTMPs)
+        ## MainNet: LSTMP + linear projection
+        ### lstmps: (1uniLSTM[-LN][-DO]-segFC-Tanh)xN
         self.lstmps = nn.ModuleList()
         for i in range(lstmp_layers):
             if ar:
@@ -369,7 +421,7 @@ class Model(nn.Module):
                 rnn_layer = RNNLayer(
                     rnn_input_dim,
                     "LSTM",
-                    False,
+                    False, # bidirectional
                     hidden_dim,
                     lstmp_dropout_rate,
                     lstmp_layernorm,
@@ -377,9 +429,11 @@ class Model(nn.Module):
                     proj=True,
                 )
             self.lstmps.append(rnn_layer)
-
-        # projection layer
+        ### Projection: segFC
         self.proj = torch.nn.Linear(hidden_dim, output_dim)
+
+        ## PostNet: None
+        pass
 
     def normalize(self, x):
         return (x - self.target_mean) / self.target_scale
@@ -414,16 +468,18 @@ class Model(nn.Module):
             ref_spk_embs: Batch of the sequences of reference speaker embeddings (B, spk_emb_dim).
         """
         B = features.shape[0]
-        
+
         # resample the input features according to resample_ratio
         features = features.permute(0, 2, 1)
         resampled_features = F.interpolate(features, scale_factor = self.resample_ratio)
         resampled_features = resampled_features.permute(0, 2, 1)
         lens = lens * self.resample_ratio
 
-        # encoder
+        # Encoder
+        ## `Taco2-AR`
         if self.encoder_type == "taco2":
             encoder_states, lens = self.encoder(resampled_features, lens) # (B, Lmax, hidden_dim)
+        ## `simple` | `simple-AR`
         elif self.encoder_type == "ffn":
             encoder_states = self.encoder(resampled_features) # (B, Lmax, hidden_dim)
 
@@ -432,13 +488,14 @@ class Model(nn.Module):
         encoder_states = self._integrate_with_spk_emb(encoder_states, ref_spk_embs)
         # /
 
-        # decoder: LSTMP layers & projection
+        # Decoder
+        # AR decofing w/ or w/o teacher-forcing
         if self.ar:
             if targets is not None:
                 targets = targets.transpose(0, 1) # (Lmax, B, output_dim)
             predicted_list = []
 
-            # initialize hidden states
+            # Initialize LSTM hidden state and cell state of all LSTMP layers, and x_t-1
             c_list = [encoder_states.new_zeros(B, self.hidden_dim)]
             z_list = [encoder_states.new_zeros(B, self.hidden_dim)]
             for _ in range(1, len(self.lstmps)):
@@ -447,21 +504,30 @@ class Model(nn.Module):
             prev_out = encoder_states.new_zeros(B, self.output_dim)
 
             # step-by-step loop for autoregressive decoding
+            ## encoder_state::(B, hidden_dim)
             for t, encoder_state in enumerate(encoder_states.transpose(0, 1)):
+                # Single time step
+                ## PreNet(t-1) & Concat
                 concat = torch.cat([encoder_state, self.prenet(prev_out)], dim=1) # each encoder_state has shape (B, hidden_dim)
+                ## Run single time step of all LSTMP layers
                 for i, lstmp in enumerate(self.lstmps):
+                    # Run a layer (1uniLSTM[-LN][-DO]-segFC-Tanh), then update states
+                    # Input: (latent_t, t-1) OR below layer's hidden state
                     lstmp_input = concat if i == 0 else z_list[i-1]
                     z_list[i], c_list[i] = lstmp(lstmp_input, z_list[i], c_list[i])
+                # Projection & Stack: Stack output_t `proj(o_lstmps)` in full-time list
                 predicted_list += [self.proj(z_list[-1]).view(B, self.output_dim, -1)] # projection is done here to ensure output dim
+                # teacher-forcing if `target` else pure-autoregressive
                 prev_out = targets[t] if targets is not None else predicted_list[-1].squeeze(-1) # targets not None = teacher-forcing
                 prev_out = self.normalize(prev_out) # apply normalization
+                # /Single time step
             predicted = torch.cat(predicted_list, dim=2)
             predicted = predicted.transpose(1, 2)  # (B, hidden_dim, Lmax) -> (B, Lmax, hidden_dim)
         else:
             predicted = encoder_states
             for i, lstmp in enumerate(self.lstmps):
                 predicted, lens = lstmp(predicted, lens)
-        
+
             # projection layer
             predicted = self.proj(predicted)
 
