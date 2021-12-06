@@ -323,8 +323,8 @@ class Model(nn.Module):
     """
     S3PRL-VC model.
 
-    `Taco2-AR`: segFC-3Conv-1biLSTM-cat_(z_t, AR-segFC)-NuniLSTM-segFC-segLinear
-    segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1biLSTM-cat_(z_t, AR-norm-(segFC-ReLU-DO)xN)-(1uniLSTM[-LN][-DO]-segFC-Tanh)xL-segFC
+    `Taco2-AR`: segFC-3Conv-1LSTM-cat_(z_t, AR-segFC)-NuniLSTM-segFC-segLinear
+    segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1LSTM-cat_(z_t, AR-norm-(segFC-ReLU-DO)xN)-(1uniLSTM[-LN][-DO]-segFC-Tanh)xL-segFC
     """
 
     def __init__(self,
@@ -466,11 +466,13 @@ class Model(nn.Module):
 
     # 'Added for A2A': `ref_spk_embs` /
     def forward(self, features, lens, ref_spk_embs, targets = None):
-        """Calculate forward propagation.
-            Args:
-            features: Batch of the sequences of input features (B, Lmax, idim).
-            targets: Batch of the sequences of padded target features (B, Lmax, odim).
-            ref_spk_embs: Batch of the sequences of reference speaker embeddings (B, spk_emb_dim).
+        """Convert unit sequence into acoustic feature sequence.
+
+        Args:
+            features (Batch, T_max, Feature_i): input unit sequences
+            lens
+            ref_spk_embs (Batch, spk_emb_dim): reference speaker embeddings sequences
+            targets (Batch, T_max, Feature_o): padded target acoustic feature sequences
         """
         B = features.shape[0]
 
