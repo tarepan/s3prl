@@ -134,7 +134,7 @@ class Taco2Encoder(torch.nn.Module):
     def forward(self, xs, ilens=None):
         """Calculate forward propagation.
         Args:
-            xs (Tensor): Batch of the padded acoustic feature sequence (B, Lmax, idim)
+            xs (Batch, T_max, Feature_o): padded acoustic feature sequence
         """
 
         # segFC linear
@@ -389,7 +389,7 @@ class Model(nn.Module):
         # define projection layer
         if self.spk_emb_integration_type == "add":
             dim_i_proj = spk_emb_dim
-        elif self.spk_emb_integration_type == "concat": 
+        elif self.spk_emb_integration_type == "concat":
             dim_i_proj = hidden_dim + spk_emb_dim
         else:
             raise ValueError("Integration type not supported.")
@@ -445,10 +445,14 @@ class Model(nn.Module):
     # 'Added for A2A'
     def _integrate_with_spk_emb(self, hs, spembs):
         """Integrate speaker embedding with hidden states.
-            Args:
-                hs (Tensor): Batch of hidden state sequences (B, Lmax, hdim).
-                spembs (Tensor): Batch of speaker embeddings (B, spk_embed_dim).
+
+        Args:
+            hs (Batch, T_max, hdim): hidden state sequences
+            spembs (Batch, spk_embed_dim): speaker embeddings
+        Returns:
+            Integrated feature sequence
         """
+
         if self.spk_emb_integration_type == "add":
             # apply projection and then add to hidden states
             spembs = self.spk_emb_projection(F.normalize(spembs))
@@ -475,19 +479,20 @@ class Model(nn.Module):
         """
         B = features.shape[0]
 
-        # resample the input features according to resample_ratio
+        # Resampling: resample the input features according to resample_ratio
+        # (B, T_max, Feat_i) => (B, Feat_i, T_max) => (B, Feat_i, T_max') => (B, T_max', Feat_i)
         features = features.permute(0, 2, 1)
         resampled_features = F.interpolate(features, scale_factor = self.resample_ratio)
         resampled_features = resampled_features.permute(0, 2, 1)
         lens = lens * self.resample_ratio
 
-        # Encoder
+        # Encoder :: (resampled_features:(B, T_max', Feat_i)) -> (B, T_max', Feat_h)
         ## `Taco2-AR`
         if self.encoder_type == "taco2":
-            encoder_states, lens = self.encoder(resampled_features, lens) # (B, Lmax, hidden_dim)
+            encoder_states, lens = self.encoder(resampled_features, lens)
         ## `simple` | `simple-AR`
         elif self.encoder_type == "ffn":
-            encoder_states = self.encoder(resampled_features) # (B, Lmax, hidden_dim)
+            encoder_states = self.encoder(resampled_features)
 
         # 'Added for A2A'
         # inject speaker embeddings
@@ -497,8 +502,9 @@ class Model(nn.Module):
         # Decoder
         # AR decofing w/ or w/o teacher-forcing
         if self.ar:
+            # Transpose for easy access: (B, T_max, Feat_o) => (T_max, B, Feat_o)
             if targets is not None:
-                targets = targets.transpose(0, 1) # (Lmax, B, output_dim)
+                targets = targets.transpose(0, 1)
             predicted_list = []
 
             # Initialize LSTM hidden state and cell state of all LSTMP layers, and x_t-1
@@ -524,7 +530,7 @@ class Model(nn.Module):
                 # Projection & Stack: Stack output_t `proj(o_lstmps)` in full-time list
                 predicted_list += [self.proj(z_list[-1]).view(B, self.output_dim, -1)] # projection is done here to ensure output dim
                 # teacher-forcing if `target` else pure-autoregressive
-                prev_out = targets[t] if targets is not None else predicted_list[-1].squeeze(-1) # targets not None = teacher-forcing
+                prev_out = targets[t] if targets is not None else predicted_list[-1].squeeze(-1)
                 prev_out = self.normalize(prev_out) # apply normalization
                 # /Single time step
             predicted = torch.cat(predicted_list, dim=2)
