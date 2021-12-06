@@ -105,6 +105,10 @@ class Runner():
 
 
     def _init_model(self, model, name, trainable, interfaces=None):
+        """Initialize a model (upstream/featurizer/downstream)
+        """
+
+        # Interface Assertion
         for interface in interfaces or []:
             assert hasattr(model, interface), interface
 
@@ -119,6 +123,10 @@ class Runner():
 
 
     def _get_upstream(self):
+        """Get upstream model from Hugging Face or s3prl hub.
+        """
+        # Acquire model (`Upstream`) and checkpoint path (`ckpt_path`)
+        ## From Hugging Face
         if "from_hf_hub" in self.args and self.args.from_hf_hub == True:
             from huggingface_hub import snapshot_download
 
@@ -126,6 +134,7 @@ class Runner():
             filepath = snapshot_download(self.args.upstream, self.args.upstream_revision, use_auth_token=True)
             sys.path.append(filepath)
 
+            # Announcement of dependency install guide (just annoucement, nothing is changed).
             dependencies = (Path(filepath) / 'requirements.txt').resolve()
             print("[Dependency] - The downloaded upstream model requires the following dependencies. Please make sure they are installed:")
             for idx, line in enumerate((Path(filepath) / "requirements.txt").open().readlines()):
@@ -134,11 +143,15 @@ class Runner():
             print()
             print(f"pip install -r {dependencies}")
             print()
+            #/
 
             from expert import UpstreamExpert
             Upstream = UpstreamExpert
             ckpt_path = os.path.join(filepath, self.args.upstream_model_name)
+        ## From s3prl hub
         else:
+            # `hub` exports functions in all `hubconf` modules
+            # Upstream::UpstreamExpert
             Upstream = getattr(hub, self.args.upstream)
             ckpt_path = self.args.upstream_ckpt
         upstream_refresh = self.args.upstream_refresh
@@ -147,6 +160,7 @@ class Runner():
             torch.distributed.barrier()
             upstream_refresh = False
 
+        # Instantiate the model with configs
         model = Upstream(
             ckpt = ckpt_path,
             model_config = self.args.upstream_model_config,

@@ -14,6 +14,7 @@
 import os
 import torch
 #-------------#
+# `_` is not exported by `hub` module
 from s3prl.utility.download import _urls_to_filepaths
 from .expert import UpstreamExpert as _UpstreamExpert
 
