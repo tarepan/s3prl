@@ -388,13 +388,12 @@ class Model(nn.Module):
         # 'Added for A2A'
         # define projection layer
         if self.spk_emb_integration_type == "add":
-            self.spk_emb_projection = torch.nn.Linear(spk_emb_dim, hidden_dim)
+            dim_i_proj = spk_emb_dim
         elif self.spk_emb_integration_type == "concat": 
-            self.spk_emb_projection = torch.nn.Linear(
-                hidden_dim + spk_emb_dim, hidden_dim
-            )
+            dim_i_proj = hidden_dim + spk_emb_dim
         else:
             raise ValueError("Integration type not supported.")
+        self.spk_emb_projection = torch.nn.Linear(dim_i_proj, hidden_dim)
         # /
 
         # Decoder
