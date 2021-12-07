@@ -3,10 +3,18 @@
 We organized most of the existing SSL pretrained models in [SUPERB Benchmark](https://arxiv.org/abs/2105.01051)'s framework.
 
 ## 1-for-all interface
-We provide an all-in-one unified interface for numerous speech pretrained models.
+We provide an all-in-one unified interface for numerous speech pretrained models.  
 **All the upstream models take input / output of the same format:**
-- **input**: list of unpadded wavs `[wav1, wav2, ...]`, each wav is in `torch.FloatTensor`
-- **output**: a dictionary where each key's corresponding value is either a padded sequence in `torch.FloatTensor` or a list of padded sequences, each in `torch.FloatTensor`. Every padded sequence is in the shape of `(batch_size, max_sequence_length_of_batch, hidden_size)`. At least a key `hidden_states` is available, which is a list.
+
+```python
+input = List[torch.FloatTensor] # [wav1, wav2, ...]
+output = {
+    "hidden_states":       List[FloatTensor[Batch, L_max, dim_hidden]],
+    "upstream_wise_key_1": List[FloatTensor[Batch, L_max, dim_hidden]],
+    "upstream_wise_key_2": FloatTensor[Batch, L_max, dim_hidden],
+    ...,
+}
+```
 
 For upstream models that operate on features other than wav (for example: log Mel, fbank, etc), the preprocessing of wav -> feature is done on-they-fly during model forward. Rest assured that this will not increase your runtime.
 
@@ -23,7 +31,7 @@ To evaluate upstreams with [SUPERB Benchmark](https://arxiv.org/abs/2105.01051),
 In this script, we can use `-u` with the `Name` to switch different upstreams for benchmarking. Take **wav2vec 2.0 Base** for example:
 
 ```bash
-python3 run_downstream.py -m train -u fbank -d example -n ExpName
+python3 run_downstream.py -m train -u fbank    -d example -n ExpName
 python3 run_downstream.py -m train -u wav2vec2 -d example -n ExpName
 ```
 

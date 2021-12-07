@@ -61,14 +61,9 @@ HF_USERNAME=username HF_PASSWORD=password python3 run_downstream.py -m train -n 
     - Some examples: `-d asr`, `-d emotion`, `-d speech_commands`
     - Each available downstream task has its corresponding folder under `downstream/`. Eg. `-d asr` means we are using the task defined in `downstream/asr/`
     - `example` is a pseudo downstream task which is useful for testing the upstream model or as an initial template for developing a new downstream task
-- Feature selection from an upstream: the output of an upstream is a dictionary, where each key's corresponding value is a list of Tensors all in `(batch_size, max_sequence_length_of_batch, hidden_size)`. The final selected feature for the downstream training depends on `-s` and `-l`. If it is a list of Tensors, we train a learnable weighted-sum (WS) on them.
-    - `-s` or `--upstream_feature_selection` (str, default: "hidden_states"): **select a key** from the upstream output dict. There are at least one key supported: `hidden_states`. Its value is a list of Tensors in the layer order where `value[0]` is closed to the upstream input and `value[-1]` is closed to the upstream output.
-    - `-l` or `--upstream_layer_selection` (int, default: None) if not specified, then the dict value selected by `-s` is the final selection. If specified, then select a specific index from the dict value selected by `-s`
-    - Examples:
-        - Select all layers of hidden states (WS): `-s hidden_states`
-        - Select the first layer: `-s hidden_states -l 0`
-        - Select the last layer: `-s hidden_states -l -1`
-        - Select a middle layer: `-s hidden_states -l 2`
+- [Feature selection from an upstream](#feature_selection_from_an_upstream)
+    - `-s` or `--upstream_feature_selection`: key of the value to use
+    - `-l` or `--upstream_layer_selection`: Index of the layer
 - `-f` or `--upstream_trainable` enables finetuning the upstream model on the downstream task. Default: false 
 - `-n` or `--name` specifies the experiment name, all the files related to this run will be saved into **expdir**=`result/downstream/{args.name}`. (You can also use `-p` or `--expdir` to directly specify the path of **expdir**.)
     - command
@@ -87,6 +82,30 @@ HF_USERNAME=username HF_PASSWORD=password python3 run_downstream.py -m train -n 
     -o "config.optimizer.lr=1.0e-3,,config.optimizer.name='AdamW',,config.runner.eval_dataloaders=['dev', 'test']"
     ```
 - `--hub` specifies the model Hub (PyTorch or Hugging Face) to retrieve the upstream model from. Default: `torch`
+
+### Feature selection from an upstream
+Output of a upstream has type below:
+```python
+{
+    "hidden_states":     List[Tensor[Batch, L_max, hidden_dim]],
+    "upstream_wise_key": List[Tensor[Batch, L_max, hidden_dim]],
+}
+```
+
+You can determine which features of an output to use.  
+
+- `-s`/`--upstream_feature_selection`: Key of the field to use in upstream output dict
+    - `::str="hidden_states"`
+- `-l`/`--upstream_layer_selection`: Index of the layer to use
+    - `::Optional[int]=None`
+    - If None, use learnable weighted-sum of all layers
+
+Examples:
+
+- `-s hidden_states`: learnable weighted-sum of all layers of hidden states
+- `-s hidden_states -l 0`: the first layer of hidden_states
+- `-s hidden_states -l -1`: the last layer of hidden_states
+- `-s hidden_states -l 2`: a middle layer of hidden_states
 
 ## Resume training from a checkpoint
 ```bash
