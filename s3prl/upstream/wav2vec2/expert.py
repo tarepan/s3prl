@@ -22,6 +22,12 @@ from s3prl.utility.helper import zero_mean_unit_var_norm
 
 
 class UpstreamExpert(UpstreamBase):
+    """wav2vec 2.0 model.
+
+    Wrapper of Fairseq `Wav2Vec2Model`.
+    `model.encoder.layers` are forward-hooked, so the features can be extracted.
+    """
+
     def __init__(self, ckpt, **kwargs):
         super().__init__(**kwargs)
         assert version.parse(fairseq.__version__) > version.parse(
@@ -29,7 +35,8 @@ class UpstreamExpert(UpstreamBase):
         ), "Please install the fairseq master branch."
 
         model, cfg, task = fairseq.checkpoint_utils.load_model_ensemble_and_task([ckpt])
-        self.model = model[0]
+        # Read only single model (length of `[ckpt]` is 1), so access the model.
+        self.model = model[0] # ::Wav2Vec2Model
         self.wav_normalize = cfg.task.normalize
 
         # These options are only used for aligning representations between s3prl and huggingface
@@ -37,6 +44,12 @@ class UpstreamExpert(UpstreamBase):
         self.apply_padding_mask = True
         self.numpy_wav_normalize = False
 
+        # Add forward hooks
+        # upstream_output includes (unique_identifier, transformed_IO) =
+        #     ("self.model.encoder.layers[0]", forward_input[0].t(0, 1))
+        #     ("self.model.encoder.layers[1]", forward_input[0].t(0, 1))
+        #     (..., )
+        #     ("self.model.encoder": forward_output[0])
         if len(self.hooks) == 0:
             module_name = "self.model.encoder.layers"
             for module_id in range(len(eval(module_name))):
@@ -47,10 +60,24 @@ class UpstreamExpert(UpstreamBase):
             self.add_hook("self.model.encoder", lambda input, output: output[0])
 
     def get_downsample_rates(self, key: str) -> int:
+        """Yield downsampling rate of wav2vec 2.0
+
+        wav2vec 2.0 encoder use strided convs, so downsampled.
+        It is common between variants, and the value is 5*2*2*2*2*2*2=320.
+        """
         return 320
 
     def forward(self, wavs):
+        """Encode waveforms into unit sequences.
+
+        Args:
+            wavs:
+        Returns:
+            Void (handled in UpstreamBase by forward hook of nn.Module)
+        """
         device = wavs[0].device
+
+        # Input normalization
         if self.wav_normalize:
             if self.numpy_wav_normalize:
                 wavs = zero_mean_unit_var_norm([wav.cpu().numpy() for wav in wavs])
@@ -58,6 +85,7 @@ class UpstreamExpert(UpstreamBase):
             else:
                 wavs = [F.layer_norm(wav, wav.shape) for wav in wavs]
 
+        # Input padding
         wav_lengths = torch.LongTensor([len(wav) for wav in wavs]).to(device)
         wav_padding_mask = ~torch.lt(
             torch.arange(max(wav_lengths)).unsqueeze(0).to(device),
@@ -65,6 +93,8 @@ class UpstreamExpert(UpstreamBase):
         )
         padded_wav = pad_sequence(wavs, batch_first=True)
 
+        # Forward calculation
+        # https://github.com/pytorch/fairseq/blob/0dfd6b624081fc4e1c72fc74ae0cd2de199c334c/fairseq/models/wav2vec/wav2vec2.py#L706
         results = self.model.extract_features(
             padded_wav, wav_padding_mask if self.apply_padding_mask else None
         )

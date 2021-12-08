@@ -15,9 +15,13 @@ TOLERABLE_SEQLEN_DIFF = 5
 
 class Hook:
     def __init__(self, module_path, transform, unique_identifier=None):
+        # Path of hook target `nn.Module`
         self.module_path = module_path
+        # Transform forward's I/O before save (list push)
+        # :: (input, output) -> Any
         self.transform = transform
         self.unique_identifier = unique_identifier or module_path
+        # Registered handler object
         self.handler = None
 
         assert isinstance(self.module_path, str)
@@ -35,6 +39,10 @@ class initHook(type):
 
 
 class UpstreamBase(nn.Module, metaclass=initHook):
+    """Base of Upstreams.
+
+    Provide hook infrastructure (Add/Update/Remove).
+    """
     def __init__(
         self,
         hooks: List[Tuple] = None,
@@ -45,19 +53,24 @@ class UpstreamBase(nn.Module, metaclass=initHook):
     ):
         """
         Args:
-            hooks: each Tuple is an argument list for the Hook initializer
+            hooks: Hook init parameters, list of (module_path, transform, unique_identifier)
+            hook_postprocess: Post-process stacked forward I/O
         """
         super().__init__()
+        # Hook list, initialized with `hooks` arguments
         self.hooks: List[Hook] = [Hook(*hook) for hook in hooks] if hooks else []
         self.hook_postprocess = hook_postprocess
+        # List of forward results recorded by hooks, Tuple(unique_identifier, transformed_IO)
         self._hook_hiddens: List[Tuple(str, Tensor)] = []
 
     def remove_all_hooks(self):
+        """Unregister registered forward hooks, and clear hook list."""
         for hook in self.hooks:
             hook.handler.remove()
         self.hooks.clear()
 
     def remove_hook(self, unique_identifier: str):
+        """Unregister the specified forward hook, and remove it from hook list."""
         updated_hooks = []
         for hook in self.hooks:
             if hook.unique_identifier == unique_identifier:
@@ -67,12 +80,24 @@ class UpstreamBase(nn.Module, metaclass=initHook):
         self.hooks = updated_hooks
 
     def add_hook(self, *args, **kwargs):
+        """Add and register a new hook"""
         hook = Hook(*args, **kwargs)
         self._register_hook_handler(hook)
         self.hooks.append(hook)
 
     def _register_hook_handler(self, hook: Hook):
+        """Registers a forward hook.
+
+        Register forward hook besed on Hook object config.
+        A Hook transform forward's I/O, then save/push it into `self._hook_hiddens`.
+        Args:
+            hook: Hook object to register
+        """
+
+        # module: nn.Module
         module = eval(hook.module_path)
+
+        # Validation: Target module is `nn.Module`
         if not isinstance(module, nn.Module):
             show(
                 f"[UpstreamBase] - {hook.module_path} is not a valid nn.Module. Skip.",
@@ -88,22 +113,43 @@ class UpstreamBase(nn.Module, metaclass=initHook):
             hook.handler.remove()
 
         def generate_hook_handler(hiddens: List, hook: Hook):
+            """
+            Args:
+                hiddens: List to which forward I/O is pushed
+                hook: hook to register
+            """
+
             def hook_handler(self, input, output):
+                """Push forward's I/O (w/ transform) into `hiddens` list.
+
+                Args:
+                    input: positional arguments of registered forward
+                    output: output of registered forward
+                """
                 hiddens.append((hook.unique_identifier, hook.transform(input, output)))
 
             return hook_handler
 
+        # register_forward_hook: https://pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module.register_forward_hook
         hook.handler = module.register_forward_hook(
             generate_hook_handler(self._hook_hiddens, hook)
         )
 
     def __call__(self, wavs: List[Tensor], *args, **kwargs):
+        """
+        Args:
+            wavs: [wav1, wav2, ...]
+        Returns:
+            upstream output dictionary (in detail, see READMEs)
+        """
+        # Clear forward history
         self._hook_hiddens.clear()
 
         result = super().__call__(wavs, *args, **kwargs) or {}
         assert isinstance(result, dict)
 
         if len(self._hook_hiddens) > 0:
+            # Validation: Reserved hooks are not overridden
             if (
                 result.get("_hidden_states_info") is not None
                 or result.get("hidden_states") is not None
@@ -116,17 +162,31 @@ class UpstreamBase(nn.Module, metaclass=initHook):
                 )
                 raise ValueError
 
+            # : List[Tuple(str, Tensor)]
             hook_hiddens = self._hook_hiddens.copy()
+            # Copied, so clear the history
             self._hook_hiddens.clear()
 
+            # Postprocessing if exists
             if callable(self.hook_postprocess):
                 hook_hiddens = self.hook_postprocess(hook_hiddens)
 
+            # Separate layer_id and value
             result["_hidden_states_info"], result["hidden_states"] = zip(*hook_hiddens)
             result["last_hidden_state"] = result["hidden_states"][-1]
 
+            # layer_id:str, hidden_state:Tensor
             for layer_id, hidden_state in enumerate(result["hidden_states"]):
                 result[f"hidden_state_{layer_id}"] = hidden_state
+
+            # {
+            #     "_hidden_states_info": List[str],
+            #     "hidden_states": List[Tensor],
+            #     "last_hidden_state": Tensor,
+            #     "hidden_state_1": Tensor,
+            #     "hidden_state_2": Tensor,
+            #     ...
+            # }
 
         return result
 
