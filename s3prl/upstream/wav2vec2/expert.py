@@ -6,6 +6,8 @@
 #   Copyright    [ Copyleft(c), Speech Lab, NTU, Taiwan ]
 """*********************************************************************************************"""
 
+"""wav2vec2 UpstreamExpert"""
+
 
 import argparse
 from typing import List
@@ -25,11 +27,13 @@ class UpstreamExpert(UpstreamBase):
     """wav2vec 2.0 model.
 
     Wrapper of Fairseq `Wav2Vec2Model`.
-    `model.encoder.layers` are forward-hooked, so the features can be extracted.
+    `model.encoder.layers` are forward-hooked, so the contexts can be extracted.
     """
 
     def __init__(self, ckpt, **kwargs):
         super().__init__(**kwargs)
+
+        # Validation: Fairseq version
         assert version.parse(fairseq.__version__) > version.parse(
             "0.10.2"
         ), "Please install the fairseq master branch."
