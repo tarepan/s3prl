@@ -13,6 +13,8 @@ import random
 import librosa
 import numpy as np
 from tqdm import tqdm
+from speechcorpusy import load_preset
+from speechcorpusy.interface import ConfCorpus
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
@@ -82,7 +84,8 @@ class VCTK_VCC2020Dataset(Dataset):
         Data split: train/dev/test = [:-11, -5:, -10:-5] for each speaker
 
         Args:
-            trdev_data_root: Root adress of wav file for train/dev (VCTK)
+            trdev_data_root: Root adress of train/dev corpus (VCTK)
+            download: Whether to download train/dev corpus if needed
             eval_data_root: Root adress of wav file for evaluation (VCC2020)
             lists_root: Root adress of utterance list
             eval_lists_root: Root adress of evaluation utterance list
@@ -101,19 +104,20 @@ class VCTK_VCC2020Dataset(Dataset):
         ## Test: List of evaluation adress pair
         X = []
         if split == 'train' or split == 'dev':
-            # Read split list, convert to path, then shuffle.
-            ## path: lists_root / f"{'train'|'dev'}_list.txt"
-            ## file_list:: str[] (e.g. "p225_007")
-            with open(os.path.join(lists_root, split + '_list.txt')) as f:
-                file_list = f.read().splitlines()
-            for fname in file_list:
-                # e.g. (spk, number) = ("p225", "007")
-                spk, number = fname.split("_")
-                # trdev_data_root / spk / f"{fname}.wav"
-                wav_path = os.path.join(trdev_data_root, spk, fname + ".wav")
-                X.append(wav_path)
+            corpus = load_preset("VCTK", root=trdev_data_root, download=download)
+            corpus.get_contents()
+
+            # In each speakers, [0, -10] is for train, [-5:] is for dev
+            all_utterances = corpus.get_identities()
+            is_train = split == 'train'
+            for spk in set(map(lambda item_id: item_id.speaker, all_utterances)):
+                utts_spk = filter(lambda item_id: item_id.speaker == spk, all_utterances)
+                for item_id in utts_spk[:-10] if is_train else utts_spk[-5:]:
+                    # "{root}/wav48/p{NNN}/p{NNN}_{NNN}.wav"
+                    X.append(str(corpus.get_item_path(item_id)))
             random.seed(train_dev_seed)
             random.shuffle(X)
+
         elif split == 'test':
             for num_samples in num_ref_samples:
                 # goal: save converted samples with diff num of ref samples to different folders?
@@ -160,13 +164,18 @@ class VCTK_VCC2020Dataset(Dataset):
         spk_encoder = VoiceEncoder()
 
         if self.split == "train" or self.split == "dev":
-            # [self.spk_embs_root / NNN.h5]
-            spk_emb_paths = [os.path.join(self.spk_embs_root, os.path.basename(wav_path).replace(".wav", ".h5")) for wav_path in self.X]
-            # (".../NNN.wav", ".../NNN.h5")[]
+            # [self.spk_embs_root / pNNN_NNN.h5]
+            spk_emb_paths = [
+                os.path.join(
+                    self.spk_embs_root, os.path.basename(wav_path).replace(".wav", ".h5")
+                ) for wav_path in self.X
+            ]
+            # (".../pNNN_NNN.wav", ".../pNNN_NNN.h5")[]
             self.X = list(zip(self.X, spk_emb_paths))
             for wav_path, spk_emb_path in tqdm(self.X, dynamic_ncols=True, desc="Extracting speaker embedding"):
                 if not os.path.isfile(spk_emb_path):
                     # extract spk emb
+                    ## on-memory preprocessing
                     wav = preprocess_wav(wav_path)
                     embedding = spk_encoder.embed_utterance(wav)
                     # save spk emb
@@ -182,6 +191,7 @@ class VCTK_VCC2020Dataset(Dataset):
                     new_tuple.append(spk_emb_path)
                     if not os.path.isfile(spk_emb_path):
                         # extract spk emb
+                        ## on-memory preprocessing
                         wav = preprocess_wav(wav_path)
                         embedding = spk_encoder.embed_utterance(wav)
                         # save spk emb
@@ -255,6 +265,7 @@ class VCTK_VCC2020Dataset(Dataset):
         input_wav_original, _ = self._load_wav(input_wav_path, fs=self.fbank_config["fs"])
         input_wav_resample, fs_resample = self._load_wav(input_wav_path, fs=FS)
 
+        # ad-hoc spectrogram generation
         lmspc = logmelspectrogram(
             x=input_wav_original,
             fs=self.fbank_config["fs"],

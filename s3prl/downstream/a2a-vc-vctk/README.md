@@ -41,10 +41,9 @@ pip install -r requirements.txt
 
 ### 2. Data & Preprocessing
 ```bash
-# Download the VCTK and the VCC2020 datasets.
+# Download the VCC2020 datasets.
 cd data
 ./vcc2020_download.sh vcc2020/
-./vctk_download.sh ./
 cd ../
 
 # Download the pretrained HiFi-GAN.

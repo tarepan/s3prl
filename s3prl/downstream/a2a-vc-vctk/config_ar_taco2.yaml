@@ -27,7 +27,8 @@ downstream_expert:
     train_batch_size: 6
     eval_batch_size: 5
     
-    trdev_data_root: "./downstream/a2a-vc-vctk/data/VCTK-Corpus/wav48"
+    trdev_data_root: "/content/gdrive/MyDrive/ML_data"
+    download: False
     eval_data_root: "./downstream/a2a-vc-vctk/data/vcc2020"
     spk_embs_root: "./downstream/a2a-vc-vctk/data/spk_embs/"
     lists_root: "./downstream/a2a-vc-vctk/data/lists"
