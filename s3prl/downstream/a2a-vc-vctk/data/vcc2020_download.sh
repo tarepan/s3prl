@@ -26,6 +26,19 @@ trgspks_task2=(
     "TFF1" "TFM1" "TGF1" "TGM1" "TMF1" "TMM1"
 )
 
+# When all .zip are decompressed, the directory is
+#
+# source/
+#     SEF1, SEF2, SEM1, SEM2/ E10001-E10070
+# vcc2020_database_evaluation/
+#     SEF1, SEF2, SEM1, SEM2/ E30001-E30025
+# vcc2020_database_groundtruth/
+#     TEF1, TEF2, TEM1, TEM2, TFF1, TFM1, TGF1, TGM1, TMF1, TMM1
+# target_task1/
+#     TEF1, TEF2, TEM1, TEM2/ 
+# target_task2/
+#     TFF1, TFM1, TGF1, TGM1, TMF1, TMM1/ M10001-M10070
+
 # download dataset
 cwd=`pwd`
 if [ ! -e ${db}/.done ]; then
@@ -36,17 +49,21 @@ if [ ! -e ${db}/.done ]; then
     cd VCC2020-database
     unzip '*.zip'
     rm -rf __MACOSX/ # remove extra folder
-    
+
     # integrate source waveforms
+    #     'vcc2020_database_evaluation.zip' + 'vcc2020_database_training_source.zip'
     for srcspk in "${srcspks[@]}"; do
         mv vcc2020_database_evaluation/${srcspk}/*.wav source/${srcspk}/
     done
     mv source/* ./
     
+    ######## 
     # integrate target waveforms
+    #     "vcc2020_database_groundtruth.zip" + "vcc2020_database_training_target_task1.zip"
     for trgspk in "${trgspks_task1[@]}"; do
         mv vcc2020_database_groundtruth/${trgspk}/*.wav target_task1/${trgspk}/
     done
+    #     "vcc2020_database_groundtruth.zip" + "vcc2020_database_training_target_task2.zip"
     for trgspk in "${trgspks_task2[@]}"; do
         mv vcc2020_database_groundtruth/${trgspk}/*.wav target_task2/${trgspk}/
     done
