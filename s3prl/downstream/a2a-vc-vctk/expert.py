@@ -77,7 +77,11 @@ class DownstreamExpert(nn.Module):
     Dataset: `VCTK_VCC2020Dataset` (train/dev/test)
     """
 
-    def __init__(self, upstream_dim, upstream_rate, downstream_expert, expdir, **kwargs):
+    def __init__(self, upstream_dim:int, upstream_rate, downstream_expert, expdir, **kwargs):
+        """
+        Args:
+            upstream_dim: Feature dimension size of upstream output
+        """
         super(DownstreamExpert, self).__init__()
         
         # basic settings
