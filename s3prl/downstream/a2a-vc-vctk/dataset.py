@@ -128,9 +128,11 @@ class VCTK_VCC2020Dataset(Dataset):
                     print("[Dataset] eval pair list file does not exist: {}".format(eval_pair_list_file))
                     # generate eval pairs
                     ## eval_lists_root / "eval_list.txt"
+                    ## list contents: E30001-E30025
                     with open(os.path.join(eval_lists_root, 'eval_list.txt')) as f:
                         file_list = f.read().splitlines()
-                    ## eval_lists_root / "E_train_list.txt"
+                    ## eval_lists_root / "E_train_list.txt": English training sample list?
+                    # E10001-E10060, E20001-E20050
                     with open(os.path.join(eval_lists_root, 'E_train_list.txt')) as f:
                         train_file_list = f.read().splitlines()
                     # Evaluation adress pairs
