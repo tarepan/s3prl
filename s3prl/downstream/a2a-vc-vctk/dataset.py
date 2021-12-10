@@ -14,7 +14,7 @@ import librosa
 import numpy as np
 from tqdm import tqdm
 from speechcorpusy import load_preset
-from speechcorpusy.interface import ConfCorpus
+from speechdatasety.helper.adress import dataset_adress, generate_path_getter
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
@@ -36,6 +36,8 @@ FS = 16000
 def generate_eval_pairs(file_list, train_file_list, eval_data_root, num_samples):
     """Generate VCC2020 adress pairs for evaluation.
 
+    All (source_utterance, target_speaker) pairs are generated.
+    target_speaker utterances are random sampled from a speaker.
     Args:
         file_list: Source file list
         train_file_list: Target file list
@@ -47,6 +49,7 @@ def generate_eval_pairs(file_list, train_file_list, eval_data_root, num_samples)
     # X::Pair[]
     X = []
     for trgspk in TRGSPKS_TASK1:
+
         # Target .wav file adress list of a speaker, filtered out those exist
         spk_file_list = []
         for number in train_file_list:
@@ -54,11 +57,12 @@ def generate_eval_pairs(file_list, train_file_list, eval_data_root, num_samples)
             wav_path = os.path.join(eval_data_root, trgspk, number + ".wav")
             if os.path.isfile(wav_path):
                 spk_file_list.append(wav_path)
+
         # generate pairs
         for srcspk in SRCSPKS:
             for number in file_list:
                 random.shuffle(spk_file_list)
-                # Pair: [adress_src, adress_tgt_1, adress_tgt_2, ..., adress_tgt_num_samples]
+                # Pair: [adress_src1_1, adress_tgt1_5, adress_tgt1_3, ..., adress_tgt_num_samples]
                 # eval_data_root / srcspk / f"{number}.wav"
                 pair = [os.path.join(eval_data_root, srcspk, number + ".wav")]
                 pair.extend(spk_file_list[:num_samples])
@@ -99,10 +103,13 @@ class VCTK_VCC2020Dataset(Dataset):
         self.spk_emb_source = spk_emb_source
         self.spk_embs_root = spk_embs_root
         os.makedirs(spk_embs_root, exist_ok=True)
-        # Prepare .wav paths
-        ## Train/dev: List of .wav adress
-        ## Test: List of evaluation adress pair
+
+        # .h5 => .pt
+        # self.get_path_emb = generate_path_getter("emb", self.spk_embs_root)
+
+        # Step1 of `X`: Prepare .wav paths as material
         X = []
+        ## Train/dev: [wav_path]
         if split == 'train' or split == 'dev':
             corpus = load_preset("VCTK", root=trdev_data_root, download=download)
             corpus.get_contents()
@@ -117,17 +124,18 @@ class VCTK_VCC2020Dataset(Dataset):
                     X.append(str(corpus.get_item_path(item_id)))
             random.seed(train_dev_seed)
             random.shuffle(X)
-
+        ## Test: [wav_source_path, wav_target_1_path, wav_target_2_path, ...][]
         elif split == 'test':
             for num_samples in num_ref_samples:
-                # goal: save converted samples with diff num of ref samples to different folders?
                 # lists_root / f"eval_{num_samples}sample_list.txt"
                 eval_pair_list_file = os.path.join(lists_root, "eval_{}sample_list.txt".format(num_samples))
+                # Load saved pathes
                 if os.path.isfile(eval_pair_list_file):
                     print("[Dataset] eval pair list file exists: {}".format(eval_pair_list_file))
                     with open(eval_pair_list_file, "r") as f:
                         lines = f.read().splitlines()
                     X += [line.split(",") for line in lines]
+                # Generate pathes
                 else:
                     print("[Dataset] eval pair list file does not exist: {}".format(eval_pair_list_file))
                     # generate eval pairs
@@ -163,7 +171,10 @@ class VCTK_VCC2020Dataset(Dataset):
         # load speaker encoder
         spk_encoder = VoiceEncoder()
 
+        # Step2 of `X`: set wav and embedding
+        ## Train/dev: [wav, self_embedding]
         if self.split == "train" or self.split == "dev":
+            # embedding of a utterance, focused on speaker
             # [self.spk_embs_root / pNNN_NNN.h5]
             spk_emb_paths = [
                 os.path.join(
@@ -173,20 +184,27 @@ class VCTK_VCC2020Dataset(Dataset):
             # (".../pNNN_NNN.wav", ".../pNNN_NNN.h5")[]
             self.X = list(zip(self.X, spk_emb_paths))
             for wav_path, spk_emb_path in tqdm(self.X, dynamic_ncols=True, desc="Extracting speaker embedding"):
+                # wav_path = self.corpus.get_item_path(item_id)
+                # spk_emb_path = self.get_path_emb(item_id)
                 if not os.path.isfile(spk_emb_path):
                     # extract spk emb
                     ## on-memory preprocessing
                     wav = preprocess_wav(wav_path)
                     embedding = spk_encoder.embed_utterance(wav)
                     # save spk emb
+                    # .../pNNN_NNN.h5/(inHDF5)spk_emb = embedding
                     write_hdf5(spk_emb_path, "spk_emb", embedding.astype(np.float32))
+        # Test: [src_wav, tgt_emb_1, tgt_emb_2, ...]
         elif self.split == "test":
             new_X = []
             for wav_paths in self.X:
                 source_wav_path = wav_paths[0]
+                # :[wav_path, emb_1_path, emb_2_path, ...]
                 new_tuple = [source_wav_path]
+                # Embeddings are needed only for target speaker because this is VC task.
                 for wav_path in wav_paths[1:]:
                     spk, number = wav_path.split(os.sep)[-2:]
+                    # .../TE{J}{N}_E{N}00{NN}.h5
                     spk_emb_path = os.path.join(self.spk_embs_root, spk + "_" + number.replace(".wav", ".h5"))
                     new_tuple.append(spk_emb_path)
                     if not os.path.isfile(spk_emb_path):
@@ -195,8 +213,10 @@ class VCTK_VCC2020Dataset(Dataset):
                         wav = preprocess_wav(wav_path)
                         embedding = spk_encoder.embed_utterance(wav)
                         # save spk emb
+                        # .../TE{J}{N}_E{N}00{NN}.h5/(inHDF5)spk_emb = embedding
                         write_hdf5(spk_emb_path, "spk_emb", embedding.astype(np.float32))
                 new_X.append(new_tuple)
+            # ::[wav_path, emb_1_path, emb_2_path, ...][]
             self.X = new_X
 
     def _load_wav(self, wav_path, fs):
@@ -253,12 +273,15 @@ class VCTK_VCC2020Dataset(Dataset):
             input_wav_resample (ndarray): The waveform, could be resampled by `FS`
             input_wav_original (ndarray): The waveform, acquired with sr=fbank_config["fs"]
             lmspc: log-mel spectrogram
-            ref_spk_emb: Averaged speaker embedding
+            ref_spk_emb: Averaged self|target speaker embedding
             input_wav_path: Path of .wav file, modified when split==`test`
-            ref_spk_name:
+            ref_spk_name: Speaker name of embedding
         """
         input_wav_path = self.X[index][0]
+        # train/dev: 1 self embedding
+        # test: multiple target embedding
         spk_emb_paths = self.X[index][1:]
+        # Speaker name of embedding
         ref_spk_name = os.path.basename(spk_emb_paths[0]).split("_")[0]
 
         # FS: Target sampling rate (global variable)
