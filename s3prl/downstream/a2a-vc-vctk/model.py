@@ -11,11 +11,30 @@
 
 """Basically same with A2O model, but embedding is added. 'Added for A2A' are annotation of the differences."""
 
+from warning import warn
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
+
+
+class Conv1dEx(nn.Conv1d):
+  """Extended Conv1d which support cansal convolution.
+
+  CausalConv + Stride is (naively) supported.
+  CausalConv + Dilation is NOT yet supported.
+  """
+  def __init__(self, *args, padding=0, causal:bool=False, **kwargs):
+    kernel_size = args[2]
+    self.input_padding = (kernel_size-1, 0) if causal else (0, 0)
+    kernel_padding = 0 if causal else padding
+    if causal and padding is not 0:
+      warn(f"`padding` is ignored and automatically set because you turn on `causal`.")
+    super().__init__(*args, padding=kernel_padding, **kwargs)
+  
+  def forward(self, i):
+    return super().forward(F.pad(i, self.input_padding))
 
 ################################################################################
 
@@ -51,6 +70,7 @@ class Taco2Encoder(torch.nn.Module):
         use_residual: bool = False,
         dropout_rate: float = 0.5,
         bidirectional: bool = True,
+        causal: bool = False,
     ):
         """Initialize Tacotron2 encoder module.
 
@@ -66,6 +86,7 @@ class Taco2Encoder(torch.nn.Module):
             use_residual: Whether to use residual connection.
             dropout_rate: Dropout rate.
             bidirectional: Whether LSTM is bidirectional or not.
+            causal: Whether Conv1d is causal or not.
         """
         super(Taco2Encoder, self).__init__()
         # store the hyperparameters
@@ -85,13 +106,14 @@ class Taco2Encoder(torch.nn.Module):
                 if use_batch_norm:
                     self.convs += [
                         torch.nn.Sequential(
-                            torch.nn.Conv1d(
+                            Conv1dEx(
                                 ichans,
                                 econv_chans,
                                 econv_filts,
                                 stride=1,
                                 padding=(econv_filts - 1) // 2,
                                 bias=False,
+                                causal=causal,
                             ),
                             torch.nn.BatchNorm1d(econv_chans),
                             torch.nn.ReLU(),
@@ -102,13 +124,14 @@ class Taco2Encoder(torch.nn.Module):
                 else:
                     self.convs += [
                         torch.nn.Sequential(
-                            torch.nn.Conv1d(
+                            Conv1dEx(
                                 ichans,
                                 econv_chans,
                                 econv_filts,
                                 stride=1,
                                 padding=(econv_filts - 1) // 2,
                                 bias=False,
+                                causal=causal,
                             ),
                             torch.nn.ReLU(),
                             torch.nn.Dropout(dropout_rate),
@@ -347,6 +370,7 @@ class Model(nn.Module):
                  prenet_dim=256,
                  prenet_dropout_rate=0.5,
                  enc_bidi: bool = True,
+                 enc_conv_causal: bool = False,
                  **kwargs):
         """
         Args:
@@ -375,7 +399,7 @@ class Model(nn.Module):
         ## `Taco2-AR`: segFC-Conv-biLSTM
         if encoder_type == "taco2":
             # model: segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1LSTM`h`, `h` stand for `hidden_dim`
-            self.encoder = Taco2Encoder(input_dim, eunits=hidden_dim, bidirectional=enc_bidi)
+            self.encoder = Taco2Encoder(input_dim, eunits=hidden_dim, bidirectional=enc_bidi, causal=enc_conv_causal)
         elif encoder_type == "ffn":
             ## `simple` | `simple-AR`: segFC-ReLU
             self.encoder = torch.nn.Sequential(

@@ -63,3 +63,4 @@ downstream_expert:
     lstmp_proj_dim: 256
     lstmp_layernorm: False
     enc_bidi: True
+    enc_conv_causal: False
