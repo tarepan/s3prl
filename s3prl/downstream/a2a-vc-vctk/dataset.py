@@ -80,7 +80,7 @@ class VCTK_VCC2020Dataset(Dataset):
     def __init__(self, split, 
                  trdev_data_root, eval_data_root, spk_embs_root, 
                  lists_root, eval_lists_root,
-                 fbank_config, spk_emb_source, num_ref_samples,
+                 fbank_config, num_ref_samples,
                  train_dev_seed=1337, **kwargs):
         """
         Prepare .wav paths, then generate speaker embedding if needed
@@ -94,13 +94,11 @@ class VCTK_VCC2020Dataset(Dataset):
             lists_root: Root adress of utterance list
             eval_lists_root: Root adress of evaluation utterance list
             fbank_config: Filterback configurations
-            spk_emb_source ("external" | Any): Flag of embedding
             train_dev_seed: Random seed, affect item order
         """
         super(VCTK_VCC2020Dataset, self).__init__()
         self.split = split
         self.fbank_config = fbank_config
-        self.spk_emb_source = spk_emb_source
         self.spk_embs_root = spk_embs_root
         os.makedirs(spk_embs_root, exist_ok=True)
 
@@ -188,12 +186,10 @@ class VCTK_VCC2020Dataset(Dataset):
         # /Prepare .wav adress
 
         # Be careful, `self.X` could be updated by `extract_spk_embs()`
-        if spk_emb_source == "external":
-            # extract spk embs beforehand
+        # extract speaker embeddings
             print("[Dataset] Extracting speaker emebddings")
             self.extract_spk_embs()
-        else:
-            NotImplementedError
+
 
 
     def _extract_a_spk_emb(self, wav_path, spk_emb_path, spk_encoder):
@@ -327,12 +323,9 @@ class VCTK_VCC2020Dataset(Dataset):
         )
 
         # get speaker embeddings
-        if self.spk_emb_source == "external":
             ref_spk_embs = [read_hdf5(spk_emb_path, "spk_emb") for spk_emb_path in spk_emb_paths]
             ref_spk_embs = np.stack(ref_spk_embs, axis=0)
             ref_spk_emb = np.mean(ref_spk_embs, axis=0)
-        else:
-            ref_spk_emb = None
 
         # Test split: change input wav path name
         if self.split == "test":

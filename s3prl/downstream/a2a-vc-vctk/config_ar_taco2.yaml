@@ -36,7 +36,6 @@ downstream_expert:
     stats_root: "./downstream/a2a-vc-vctk/data/stats"
     eval_f0_path: "./downstream/a2o-vc-vcc2020/data/f0.yaml"
 
-    spk_emb_source: "external"
     num_ref_samples: [10]
 
     fbank_config:
