@@ -105,12 +105,6 @@ class VCTK_VCC2020Dataset(Dataset):
         os.makedirs(spk_embs_root, exist_ok=True)
 
         # Directories
-        ## Train/dev
-        ### Step1
-        # f"{trdev_data_root}/wav48/p{NNN}/p{NNN}_{NNN}.wav"
-        ### Step2
-        # f"{self.spk_embs_root}/p{NNN}_{NNN}.h5"
-        #     (in hdf5)/spk_emb
         ## Test
         ### Step1
         # f"{lists_root}/eval_{num_samples}sample_list.txt"
@@ -130,24 +124,23 @@ class VCTK_VCC2020Dataset(Dataset):
         #     in different .h5 files.
         #     No dataset-wide access, no partial access.
 
-        # .h5 => .pt
-        # self.get_path_emb = generate_path_getter("emb", self.spk_embs_root)
+        # (.h5 => .pt)
+        # f"{self.spk_embs_root}/{spk}/embs/p{NNN}_{NNN}.emb.pt"
+        self.get_path_emb = generate_path_getter("emb", self.spk_embs_root)
 
         # Step1 of `X`: Prepare .wav paths as material
         X = []
-        ## Train/dev: [wav_path]
+        ## Train/dev: [ItemID]
         if split == 'train' or split == 'dev':
-            corpus = load_preset("VCTK", root=trdev_data_root, download=download)
-            corpus.get_contents()
+            self.corpus = load_preset("VCTK", root=trdev_data_root, download=download)
+            self.corpus.get_contents()
 
             # In each speakers, [0, -10] is for train, [-5:] is for dev
-            all_utterances = corpus.get_identities()
+            all_utterances = self.corpus.get_identities()
             is_train = split == 'train'
             for spk in set(map(lambda item_id: item_id.speaker, all_utterances)):
                 utts_spk = filter(lambda item_id: item_id.speaker == spk, all_utterances)
-                for item_id in utts_spk[:-10] if is_train else utts_spk[-5:]:
-                    # f"{trdev_data_root}/wav48/p{NNN}/p{NNN}_{NNN}.wav"
-                    X.append(str(corpus.get_item_path(item_id)))
+                X.extend(utts_spk[:-10] if is_train else utts_spk[-5:])
             random.seed(train_dev_seed)
             random.shuffle(X)
         ## Test: [wav_source_path, wav_target_1_path, wav_target_2_path, ...][]
@@ -200,26 +193,23 @@ class VCTK_VCC2020Dataset(Dataset):
         # Step2 of `X`: set wav and embedding
         ## Train/dev: [wav, self_embedding]
         if self.split == "train" or self.split == "dev":
-            # embedding of a utterance, focused on speaker
-            # [self.spk_embs_root / pNNN_NNN.h5]
-            spk_emb_paths = [
-                os.path.join(
-                    self.spk_embs_root, os.path.basename(wav_path).replace(".wav", ".h5")
-                ) for wav_path in self.X
-            ]
-            # (".../pNNN_NNN.wav", ".../pNNN_NNN.h5")[]
-            self.X = list(zip(self.X, spk_emb_paths))
-            for wav_path, spk_emb_path in tqdm(self.X, dynamic_ncols=True, desc="Extracting speaker embedding"):
-                # wav_path = self.corpus.get_item_path(item_id)
-                # spk_emb_path = self.get_path_emb(item_id)
-                if not os.path.isfile(spk_emb_path):
+            ### Backward compatibility
+            new_X = []
+            for item_id in tqdm(self.X, desc="Extracting speaker embedding"):
+                wav_path = self.corpus.get_item_path(item_id)
+                spk_emb_path = self.get_path_emb(item_id)
+                if not spk_emb_path.is_file():
                     # extract spk emb
                     ## on-memory preprocessing
                     wav = preprocess_wav(wav_path)
                     embedding = spk_encoder.embed_utterance(wav)
                     # save spk emb
-                    # .../pNNN_NNN.h5/(inHDF5)spk_emb = embedding
-                    write_hdf5(spk_emb_path, "spk_emb", embedding.astype(np.float32))
+                    # spk_emb_path/(inHDF5)spk_emb
+                    write_hdf5(str(spk_emb_path), "spk_emb", embedding.astype(np.float32))
+                ### backward compatibility
+                new_X.append([wav_path, spk_emb_path])
+            ### backward compatibility
+            self.X = new_X
         # Test: [src_wav, tgt_emb_1, tgt_emb_2, ...]
         elif self.split == "test":
             new_X = []
