@@ -52,6 +52,8 @@ def generate_eval_pairs(file_list, train_file_list, eval_data_root, num_samples)
             wav_path = os.path.join(eval_data_root, trgspk, number + ".wav")
             if os.path.isfile(wav_path):
                 spk_file_list.append(wav_path)
+            else:
+                print(f"Remove from train_file_list: {wav_path}")
         # generate pairs
         for srcspk in SRCSPKS:
             for number in file_list:
