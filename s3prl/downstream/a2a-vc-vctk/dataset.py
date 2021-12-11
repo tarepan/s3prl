@@ -195,6 +195,16 @@ class VCTK_VCC2020Dataset(Dataset):
         else:
             NotImplementedError
 
+
+    def _extract_a_spk_emb(self, wav_path, spk_emb_path, spk_encoder):
+        """Extract speaker embedding from an untterance."""
+        ## on-memory preprocessing
+        wav = preprocess_wav(wav_path)
+        embedding = spk_encoder.embed_utterance(wav)
+        # save spk emb
+        # spk_emb_path/(inHDF5)spk_emb
+        write_hdf5(str(spk_emb_path), "spk_emb", embedding.astype(np.float32))
+
     def extract_spk_embs(self):
         """"Update path object, then generate and save embedding"""
         # load speaker encoder
@@ -209,13 +219,7 @@ class VCTK_VCC2020Dataset(Dataset):
                 wav_path = self.corpus.get_item_path(item_id)
                 spk_emb_path = self.get_path_emb(item_id)
                 if not spk_emb_path.is_file():
-                    # extract spk emb
-                    ## on-memory preprocessing
-                    wav = preprocess_wav(wav_path)
-                    embedding = spk_encoder.embed_utterance(wav)
-                    # save spk emb
-                    # spk_emb_path/(inHDF5)spk_emb
-                    write_hdf5(str(spk_emb_path), "spk_emb", embedding.astype(np.float32))
+                    self._extract_a_spk_emb(wav_path, spk_emb_path, spk_encoder):
                 ### backward compatibility
                 new_X.append([wav_path, spk_emb_path])
             ### backward compatibility
@@ -234,13 +238,8 @@ class VCTK_VCC2020Dataset(Dataset):
                     spk_emb_path = os.path.join(self.spk_embs_root, spk + "_" + number.replace(".wav", ".h5"))
                     new_tuple.append(spk_emb_path)
                     if not os.path.isfile(spk_emb_path):
-                        # extract spk emb
-                        ## on-memory preprocessing
-                        wav = preprocess_wav(wav_path)
-                        embedding = spk_encoder.embed_utterance(wav)
-                        # save spk emb
                         # {self.spk_embs_root}/TE{J}{N}_E{N}00{NN}.h5/(inHDF5)spk_emb = embedding
-                        write_hdf5(spk_emb_path, "spk_emb", embedding.astype(np.float32))
+                        self._extract_a_spk_emb(wav_path, spk_emb_path, spk_encoder):
                 new_X.append(new_tuple)
             # ::[wav_path, emb_1_path, emb_2_path, ...][]
             self.X = new_X
