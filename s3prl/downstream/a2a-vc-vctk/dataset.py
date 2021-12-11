@@ -14,6 +14,8 @@ import librosa
 import numpy as np
 from tqdm import tqdm
 from speechcorpusy import load_preset
+from speechdatasety.helper.archive import hash_args
+from speechdatasety.helper.archive import try_to_acquire_archive_contents, save_archive
 from speechdatasety.helper.adress import dataset_adress, generate_path_getter
 
 import torch
@@ -122,16 +124,13 @@ class VCTK_VCC2020Dataset(Dataset):
         #     in different .h5 files.
         #     No dataset-wide access, no partial access.
 
-        # Step1 of `X`: Prepare .wav paths as material
-        X = []
-        ## Train/dev: [ItemID]
         if split == 'train' or split == 'dev':
-            self.corpus = load_preset("VCTK", root=trdev_data_root, download=download)
-            self.corpus.get_contents()
+            self._corpus = load_preset("VCTK", root=trdev_data_root, download=download)
+            self._corpus.get_contents()
 
             adress_archive, self._path_contents = dataset_adress(
                 trdev_data_root,
-                self.corpus.__class__.__name__,
+                self._corpus.__class__.__name__,
                 "emb",
                 "hashed_args",
             )
@@ -143,16 +142,31 @@ class VCTK_VCC2020Dataset(Dataset):
 
             # Prepare data identities.
             ## In each speakers, [0, -10] is for train, [-5:] is for dev
-            all_utterances = self.corpus.get_identities()
+            X = []
+            all_utterances = self._corpus.get_identities()
             is_train = split == 'train'
             for spk in set(map(lambda item_id: item_id.speaker, all_utterances)):
                 utts_spk = filter(lambda item_id: item_id.speaker == spk, all_utterances)
                 X.extend(utts_spk[:-10] if is_train else utts_spk[-5:])
             random.seed(train_dev_seed)
             random.shuffle(X)
+            self._ids = X
+            self.X = X
 
+            # Deploy dataset contents.
+            contents_acquired = try_to_acquire_archive_contents(adress_archive, self._path_contents)
+            if not contents_acquired:
+                # Generate the dataset contents from corpus
+                print("Dataset archive file is not found. Automatically generating new dataset...")
+                self._generate_dataset_contents()
+                save_archive(self._path_contents, adress_archive)
+                print("Dataset contents was generated and archive was saved.")
+            print('[Dataset] - number of data for ' + split + ': ' + str(len(X)))
+
+        # Step1 of `X`: Prepare .wav paths as material
         ## Test: [wav_source_path, wav_target_1_path, wav_target_2_path, ...][]
         elif split == 'test':
+            X = []
             for num_samples in num_ref_samples:
                 # lists_root / f"eval_{num_samples}sample_list.txt"
                 eval_pair_list_file = os.path.join(lists_root, "eval_{}sample_list.txt".format(num_samples))
@@ -179,18 +193,30 @@ class VCTK_VCC2020Dataset(Dataset):
                         for line in eval_pairs:
                             f.write(",".join(line)+"\n")
                     X += eval_pairs
-        else:
-            raise ValueError('Invalid \'split\' argument for dataset: VCTK_VCC2020Dataset!')
-        print('[Dataset] - number of data for ' + split + ': ' + str(len(X)))
-        self.X = X
-        # /Prepare .wav adress
+            print('[Dataset] - number of data for ' + split + ': ' + str(len(X)))
+            self.X = X
+            # /Prepare .wav adress
 
-        # Be careful, `self.X` could be updated by `extract_spk_embs()`
-        # extract speaker embeddings
+            # Be careful, `self.X` could be updated by `extract_spk_embs()`
+            # extract speaker embeddings
             print("[Dataset] Extracting speaker emebddings")
             self.extract_spk_embs()
+        else:
+            raise ValueError('Invalid \'split\' argument for dataset: VCTK_VCC2020Dataset!')
 
+    def _generate_dataset_contents(self) -> None:
+        """Generate dataset with corpus auto-download and preprocessing.
+        """
 
+        self._corpus.get_contents()
+
+        spk_encoder = VoiceEncoder()
+        for item_id in tqdm(self._ids, desc="Preprocessing", unit="utterance"):
+            self._extract_a_spk_emb(
+                self._corpus.get_item_path(item_id),
+                self.get_path_emb(item_id),
+                spk_encoder,
+            )
 
     def _extract_a_spk_emb(self, wav_path, spk_emb_path, spk_encoder):
         """Extract speaker embedding from an untterance."""
@@ -205,17 +231,8 @@ class VCTK_VCC2020Dataset(Dataset):
         """"Update path object, then generate and save embedding"""
         # load speaker encoder
         spk_encoder = VoiceEncoder()
-
-        # Step2 of `X`: set wav and embedding
-        ## Train/dev: [wav, self_embedding]
-        if self.split == "train" or self.split == "dev":
-            for item_id in tqdm(self.X, desc="Extracting speaker embedding"):
-                wav_path = self.corpus.get_item_path(item_id)
-                spk_emb_path = self.get_path_emb(item_id)
-                if not spk_emb_path.is_file():
-                    self._extract_a_spk_emb(wav_path, spk_emb_path, spk_encoder):
         # Test: [src_wav, tgt_emb_1, tgt_emb_2, ...]
-        elif self.split == "test":
+        if self.split == "test":
             new_X = []
             for wav_paths in self.X:
                 source_wav_path = wav_paths[0]
@@ -262,7 +279,7 @@ class VCTK_VCC2020Dataset(Dataset):
         # Backward compatibility
         if self.split == 'train' or self.split == 'dev':
             X = list(map(
-                lambda item_id: [self.corpus.get_item_path(item_id), self.get_path_emb(item_id)],
+                lambda item_id: [self._corpus.get_item_path(item_id), self.get_path_emb(item_id)],
                 self.X
             ))
         else:
@@ -304,7 +321,7 @@ class VCTK_VCC2020Dataset(Dataset):
         # Backward compatibility
         if self.split == 'train' or self.split == 'dev':
             X = list(map(
-                lambda item_id: [self.corpus.get_item_path(item_id), self.get_path_emb(item_id)],
+                lambda item_id: [self._corpus.get_item_path(item_id), self.get_path_emb(item_id)],
                 self.X
             ))
         else:
@@ -335,9 +352,9 @@ class VCTK_VCC2020Dataset(Dataset):
         )
 
         # get speaker embeddings
-            ref_spk_embs = [read_hdf5(spk_emb_path, "spk_emb") for spk_emb_path in spk_emb_paths]
-            ref_spk_embs = np.stack(ref_spk_embs, axis=0)
-            ref_spk_emb = np.mean(ref_spk_embs, axis=0)
+        ref_spk_embs = [read_hdf5(spk_emb_path, "spk_emb") for spk_emb_path in spk_emb_paths]
+        ref_spk_embs = np.stack(ref_spk_embs, axis=0)
+        ref_spk_emb = np.mean(ref_spk_embs, axis=0)
 
         # Test split: change input wav path name
         if self.split == "test":
