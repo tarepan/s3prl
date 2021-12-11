@@ -104,6 +104,32 @@ class VCTK_VCC2020Dataset(Dataset):
         self.spk_embs_root = spk_embs_root
         os.makedirs(spk_embs_root, exist_ok=True)
 
+        # Directories
+        ## Train/dev
+        ### Step1
+        # f"{trdev_data_root}/wav48/p{NNN}/p{NNN}_{NNN}.wav"
+        ### Step2
+        # f"{self.spk_embs_root}/p{NNN}_{NNN}.h5"
+        #     (in hdf5)/spk_emb
+        ## Test
+        ### Step1
+        # f"{lists_root}/eval_{num_samples}sample_list.txt"
+        # f"{eval_lists_root}/eval_list.txt"
+        # f"{eval_lists_root}/E_train_list.txt"
+        # f"{eval_data_root}/{trgspk}/{number}.wav"
+        # f"{eval_data_root}/{srcspk}/{number}.wav"
+        ### Step2
+        # f"{self.spk_embs_root}/TE{J}{N}_E{N}00{NN}.h5
+        # {self.spk_embs_root}/TE{J}{N}_E{N}00{NN}.h5
+        #     (inHDF5)/spk_emb
+
+        # Design Notes:
+        #   HDF5:
+        #     HDF5 is over-enginerring.
+        #     Currently it is used only for embeddings, and all embeddings are saved
+        #     in different .h5 files.
+        #     No dataset-wide access, no partial access.
+
         # .h5 => .pt
         # self.get_path_emb = generate_path_getter("emb", self.spk_embs_root)
 
@@ -120,7 +146,7 @@ class VCTK_VCC2020Dataset(Dataset):
             for spk in set(map(lambda item_id: item_id.speaker, all_utterances)):
                 utts_spk = filter(lambda item_id: item_id.speaker == spk, all_utterances)
                 for item_id in utts_spk[:-10] if is_train else utts_spk[-5:]:
-                    # "{root}/wav48/p{NNN}/p{NNN}_{NNN}.wav"
+                    # f"{trdev_data_root}/wav48/p{NNN}/p{NNN}_{NNN}.wav"
                     X.append(str(corpus.get_item_path(item_id)))
             random.seed(train_dev_seed)
             random.shuffle(X)
@@ -204,7 +230,7 @@ class VCTK_VCC2020Dataset(Dataset):
                 # Embeddings are needed only for target speaker because this is VC task.
                 for wav_path in wav_paths[1:]:
                     spk, number = wav_path.split(os.sep)[-2:]
-                    # .../TE{J}{N}_E{N}00{NN}.h5
+                    # f"{self.spk_embs_root}/TE{J}{N}_E{N}00{NN}.h5
                     spk_emb_path = os.path.join(self.spk_embs_root, spk + "_" + number.replace(".wav", ".h5"))
                     new_tuple.append(spk_emb_path)
                     if not os.path.isfile(spk_emb_path):
@@ -213,7 +239,7 @@ class VCTK_VCC2020Dataset(Dataset):
                         wav = preprocess_wav(wav_path)
                         embedding = spk_encoder.embed_utterance(wav)
                         # save spk emb
-                        # .../TE{J}{N}_E{N}00{NN}.h5/(inHDF5)spk_emb = embedding
+                        # {self.spk_embs_root}/TE{J}{N}_E{N}00{NN}.h5/(inHDF5)spk_emb = embedding
                         write_hdf5(spk_emb_path, "spk_emb", embedding.astype(np.float32))
                 new_X.append(new_tuple)
             # ::[wav_path, emb_1_path, emb_2_path, ...][]
