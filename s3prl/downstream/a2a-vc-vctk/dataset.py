@@ -209,17 +209,11 @@ class VCTK_VCC2020Dataset(Dataset):
         # Step2 of `X`: set wav and embedding
         ## Train/dev: [wav, self_embedding]
         if self.split == "train" or self.split == "dev":
-            ### Backward compatibility
-            new_X = []
             for item_id in tqdm(self.X, desc="Extracting speaker embedding"):
                 wav_path = self.corpus.get_item_path(item_id)
                 spk_emb_path = self.get_path_emb(item_id)
                 if not spk_emb_path.is_file():
                     self._extract_a_spk_emb(wav_path, spk_emb_path, spk_encoder):
-                ### backward compatibility
-                new_X.append([wav_path, spk_emb_path])
-            ### backward compatibility
-            self.X = new_X
         # Test: [src_wav, tgt_emb_1, tgt_emb_2, ...]
         elif self.split == "test":
             new_X = []
@@ -265,8 +259,17 @@ class VCTK_VCC2020Dataset(Dataset):
             [(Time, MelFreq)] List of log-mel spectrogram
         """
 
+        # Backward compatibility
+        if self.split == 'train' or self.split == 'dev':
+            X = list(map(
+                lambda item_id: [self.corpus.get_item_path(item_id), self.get_path_emb(item_id)],
+                self.X
+            ))
+        else:
+            X = self.X
+
         lmspcs = []
-        for xs in tqdm(self.X, dynamic_ncols=True, desc="Extracting target acoustic features"):
+        for xs in tqdm(X, dynamic_ncols=True, desc="Extracting target acoustic features"):
             input_wav_path = xs[0]
             # (Time), (Time)
             input_wav_original, fs_original = self._load_wav(input_wav_path, fs=None)
@@ -298,10 +301,19 @@ class VCTK_VCC2020Dataset(Dataset):
             input_wav_path: Path of .wav file, modified when split==`test`
             ref_spk_name: Speaker name of embedding
         """
-        input_wav_path = self.X[index][0]
+        # Backward compatibility
+        if self.split == 'train' or self.split == 'dev':
+            X = list(map(
+                lambda item_id: [self.corpus.get_item_path(item_id), self.get_path_emb(item_id)],
+                self.X
+            ))
+        else:
+            X = self.X
+
+        input_wav_path = X[index][0]
         # train/dev: 1 self embedding
         # test: multiple target embedding
-        spk_emb_paths = self.X[index][1:]
+        spk_emb_paths = X[index][1:]
         # Speaker name of embedding
         ref_spk_name = os.path.basename(spk_emb_paths[0]).split("_")[0]
 
