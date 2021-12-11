@@ -124,10 +124,6 @@ class VCTK_VCC2020Dataset(Dataset):
         #     in different .h5 files.
         #     No dataset-wide access, no partial access.
 
-        # (.h5 => .pt)
-        # f"{self.spk_embs_root}/{spk}/embs/p{NNN}_{NNN}.emb.pt"
-        self.get_path_emb = generate_path_getter("emb", self.spk_embs_root)
-
         # Step1 of `X`: Prepare .wav paths as material
         X = []
         ## Train/dev: [ItemID]
@@ -135,7 +131,20 @@ class VCTK_VCC2020Dataset(Dataset):
             self.corpus = load_preset("VCTK", root=trdev_data_root, download=download)
             self.corpus.get_contents()
 
-            # In each speakers, [0, -10] is for train, [-5:] is for dev
+            adress_archive, self._path_contents = dataset_adress(
+                trdev_data_root,
+                self.corpus.__class__.__name__,
+                "emb",
+                "hashed_args",
+            )
+
+            # Prepare datum path getter.
+            ## (.h5 => .pt)
+            ## f"{self._path_contents}/{spk}/embs/p{NNN}_{NNN}.emb.pt"
+            self.get_path_emb = generate_path_getter("emb", self._path_contents)
+
+            # Prepare data identities.
+            ## In each speakers, [0, -10] is for train, [-5:] is for dev
             all_utterances = self.corpus.get_identities()
             is_train = split == 'train'
             for spk in set(map(lambda item_id: item_id.speaker, all_utterances)):
@@ -143,6 +152,7 @@ class VCTK_VCC2020Dataset(Dataset):
                 X.extend(utts_spk[:-10] if is_train else utts_spk[-5:])
             random.seed(train_dev_seed)
             random.shuffle(X)
+
         ## Test: [wav_source_path, wav_target_1_path, wav_target_2_path, ...][]
         elif split == 'test':
             for num_samples in num_ref_samples:
