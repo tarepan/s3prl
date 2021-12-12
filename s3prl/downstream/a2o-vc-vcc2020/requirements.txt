@@ -5,3 +5,4 @@ pysptk
 jiwer
 resemblyzer
 git+https://github.com/tarepan/extorch
+git+https://github.com/tarepan/speechcorpusy.git

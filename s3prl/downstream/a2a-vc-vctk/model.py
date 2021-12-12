@@ -482,7 +482,7 @@ class Model(nn.Module):
         Args:
             features (Batch, T_max, Feature_i): input unit sequences
             lens
-            ref_spk_embs (Batch, spk_emb_dim): reference speaker embeddings sequences
+            ref_spk_embs (Batch, Spk_emb): reference (self/target) speaker embeddings sequences
             targets (Batch, T_max, Feature_o): padded target acoustic feature sequences
         """
         B = features.shape[0]
