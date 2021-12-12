@@ -31,10 +31,6 @@ from .utils import logmelspectrogram
 from .utils import read_hdf5, write_hdf5
 
 
-# Hardcoded VCC2020 speaker names for evaluation
-SRCSPKS = ["SEF1", "SEF2", "SEM1", "SEM2"]
-TRGSPKS_TASK1 = ["TEF1", "TEF2", "TEM1", "TEM2"]
-
 # Hardcoded resampling rate
 FS = 16000
 
