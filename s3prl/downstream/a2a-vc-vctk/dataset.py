@@ -45,6 +45,7 @@ class Stat:
 
 def save_vc_tuples(content_path: Path, num_target: int, tuples: List[List[ItemId]]):
     p = content_path / f"vc_{num_target}_tuples.pkl"
+    p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "wb") as f:
         pickle.dump(tuples, f)
 
