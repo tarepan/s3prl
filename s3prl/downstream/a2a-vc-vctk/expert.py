@@ -195,15 +195,20 @@ class DownstreamExpert(nn.Module):
         """S3PRL interface for calculation"""
 
         device = input_features[0].device
+        ref_spk_embs = ref_spk_embs.to(device)
 
         # padding
         input_feature_lengths = torch.IntTensor([feature.shape[0] for feature in input_features])
         input_features = pad_sequence(input_features, batch_first=True).to(device=device)
-        ref_spk_embs = ref_spk_embs.to(device)
-        
+
+        # Inference (w/o teacher-forcing)
         if split in ["dev", "test"]:
             # The forward
-            predicted_features, predicted_feature_lengths = self.model(input_features, input_feature_lengths, ref_spk_embs)
+            predicted_features, predicted_feature_lengths = self.model(
+                input_features,
+                input_feature_lengths,
+                ref_spk_embs,
+            )
 
             # save the unnormalized features for dev and test sets
             records["predicted_features"] += predicted_features.cpu().numpy().tolist()
@@ -211,8 +216,15 @@ class DownstreamExpert(nn.Module):
             records["wav_paths"] += wav_paths
             records["ref_spk_names"] += ref_spk_names
             records["wavs"] += wavs
+        # Training (w/ teacher-forcing)
         else:
-            predicted_features, predicted_feature_lengths = self.model(input_features, input_feature_lengths, ref_spk_embs, acoustic_features_padded.to(device))
+            # The forward
+            predicted_features, predicted_feature_lengths = self.model(
+                input_features,
+                input_feature_lengths,
+                ref_spk_embs,
+                acoustic_features_padded.to(device),
+            )
 
         # Masked/normalized L1 loss
         loss = self.objective(predicted_features,
