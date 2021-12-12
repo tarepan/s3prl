@@ -12,6 +12,7 @@ import random
 from typing import List, Optional
 from pathlib import Path
 import pickle
+from dataclasses import dataclass
 
 import librosa
 import numpy as np
