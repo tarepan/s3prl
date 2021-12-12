@@ -39,6 +39,13 @@ TRGSPKS_TASK1 = ["TEF1", "TEF2", "TEM1", "TEM2"]
 FS = 16000
 
 
+@dataclass
+class Stat:
+    """Spectrogarm statistics container"""
+    mean_: np.ndarray
+    scale_: np.ndarray
+
+
 def save_vc_tuples(content_path: Path, num_target: int, tuples: List[List[ItemId]]):
     p = content_path / f"vc_{num_target}_tuples.pkl"
     with open(p, "wb") as f:
@@ -133,6 +140,7 @@ class VCTK_VCC2020Dataset(Dataset):
             f"{split}_hashed_args",
         )
         self.get_path_emb = generate_path_getter("emb", self._path_contents)
+        self._path_stats = self._path_contents / "stats.pkl"
 
         # Select data identities.
         all_utterances = self._corpus.get_identities()
@@ -187,6 +195,7 @@ class VCTK_VCC2020Dataset(Dataset):
 
         self._corpus.get_contents()
 
+        # Embedding
         spk_encoder = VoiceEncoder()
         for item_id in tqdm(self._targets, desc="Preprocessing", unit="utterance"):
             self._extract_a_spk_emb(
@@ -194,6 +203,10 @@ class VCTK_VCC2020Dataset(Dataset):
                 self.get_path_emb(item_id),
                 spk_encoder,
             )
+
+        # Statistics
+        if self.split == "train":
+            self._calculate_spec_stat()
 
     def _extract_a_spk_emb(self, wav_path, spk_emb_path, spk_encoder):
         """Extract speaker embedding from an untterance."""
@@ -203,6 +216,45 @@ class VCTK_VCC2020Dataset(Dataset):
         # save spk emb
         # spk_emb_path/(inHDF5)spk_emb
         write_hdf5(str(spk_emb_path), "spk_emb", embedding.astype(np.float32))
+
+    def acquire_spec_stat(self):
+        """Acquire scaler, the statistics (mean and variance) of mel-spectrograms"""
+        with open(self._path_stats, "rb") as f:
+            scaler =  pickle.load(f)
+        return scaler
+
+    def _calculate_spec_stat(self):
+        """Calculate mean and variance of spectrograms."""
+        
+        # ※ Need high memory because extract all specs at once
+        # [(Time, MelFreq)]
+        lmspcs = self.get_all_lmspcs()
+
+        ## Calculate average
+        # ave::(MelFreq)
+        ave = np.zeros(lmspcs[0].shape[1])
+        L = 0
+        # spectrogram::(Time, MelFreq)
+        for spectrogram in lmspcs:
+            ave = np.add(ave, np.sum(spectrogram, axis=0))
+            L += spectrogram.shape[0]
+        ave = ave/L
+
+        ## Calculate sigma
+        # sigma::(MelFreq)
+        sigma = np.zeros(lmspcs[0].shape[1])
+        L = 0
+        # spectrogram::(Time, MelFreq)
+        for spectrogram in lmspcs:
+            sigma = np.add(sigma, np.sum(np.abs(spectrogram - ave), axis=0))
+            L += spectrogram.shape[0]
+        sigma = sigma/L
+
+        scaler = Stat(ave, sigma)
+
+        # Save
+        with open(self._path_stats, "wb") as f:
+            pickle.dump(scaler, f)
 
     def _load_wav(self, wav_path, fs):
         """Load wav file with resampling if needed

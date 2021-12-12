@@ -22,7 +22,7 @@ from torch.distributed import is_initialized
 from torch.nn.utils.rnn import pad_sequence
 
 from .model import Model
-from .dataset import VCTK_VCC2020Dataset
+from .dataset import VCTK_VCC2020Dataset, Stat
 from .utils import make_non_pad_mask
 from .utils import read_hdf5, write_hdf5
 from .utils import logmelspc_to_linearspc, griffin_lim
@@ -65,12 +65,6 @@ class Loss(nn.Module):
         return loss
 
 
-@dataclass
-class Stat:
-    mean_: np.ndarray
-    scale_: np.ndarray
-
-
 class DownstreamExpert(nn.Module):
     """S3PRL interface of a2a-vc-vctk
 
@@ -94,55 +88,13 @@ class DownstreamExpert(nn.Module):
         self.resample_ratio = self.fs / self.datarc["fbank_config"]["n_shift"] * upstream_rate / FS
         print('[Downstream] - resample_ratio: ' + str(self.resample_ratio))
 
-        # load datasets
+        # Load datasets
         self.train_dataset = VCTK_VCC2020Dataset('train', **self.datarc)
         self.dev_dataset = VCTK_VCC2020Dataset('dev', **self.datarc)
         self.test_dataset = VCTK_VCC2020Dataset('test', **self.datarc)
 
-        # load statistics file if exists, and calculate if not found
-        stats_root = self.datarc["stats_root"]
-        ## Root directory
-        if not os.path.exists(stats_root):
-            os.makedirs(stats_root)
-        stats_path = os.path.join(stats_root, "stats.h5")
-        ## Load from file
-        if os.path.exists(stats_path):
-            print("[Stats] - reading stats from " + str(stats_path))
-            scaler = Stat(read_hdf5(stats_path, "mean"), read_hdf5(stats_path, "scale"))
-        ## Newly calculate and save
-        else:
-            # ※ Need high memory because extract all specs at once
-            # Prepare log-mel-spec
-            print("[Stats] - " + str(stats_path) + " does not exist. Reading data...")
-            # [(Time, MelFreq)]
-            lmspcs = self.train_dataset.get_all_lmspcs()
-
-            # Compute the mean and std
-            print("[Stats] - " + str(stats_path) + " does not exist. Calculating statistics...")
-            ## Calculate average
-            # ave::(MelFreq)
-            ave = np.zeros(lmspcs[0].shape[1])
-            L = 0
-            # spectrogram::(Time, MelFreq)
-            for spectrogram in lmspcs:
-                ave = np.add(ave, np.sum(spectrogram, axis=0))
-                L += spectrogram.shape[0]
-            ave = ave/L
-            ## Calculate sigma
-            # sigma::(MelFreq)
-            sigma = np.zeros(lmspcs[0].shape[1])
-            L = 0
-            # spectrogram::(Time, MelFreq)
-            for spectrogram in lmspcs:
-                sigma = np.add(sigma, np.sum(np.abs(spectrogram - ave), axis=0))
-                L += spectrogram.shape[0]
-            sigma = sigma/L
-            scaler = Stat(ave, sigma)
-            # Save
-            write_hdf5(stats_path, "mean", scaler.mean_.astype(np.float32))
-            write_hdf5(stats_path, "scale", scaler.scale_.astype(np.float32))
-            print("[Stats] - writing stats to " + str(stats_path))
-        self.stats = scaler
+        # Load dataset-wise statistics
+        self.stats = self.train_dataset.acquire_spec_stat()
 
         # define model and loss
         self.model = Model(
