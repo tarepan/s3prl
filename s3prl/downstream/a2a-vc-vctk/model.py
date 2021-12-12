@@ -11,7 +11,7 @@
 
 """Basically same with A2O model, but embedding is added. 'Added for A2A' are annotation of the differences."""
 
-from warning import warn
+from warnings import warn
 
 import torch
 import torch.nn as nn
