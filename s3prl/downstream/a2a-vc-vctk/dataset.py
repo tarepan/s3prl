@@ -118,6 +118,7 @@ class VCTK_VCC2020Dataset(Dataset):
         super().__init__()
         self.split = split
         self.fbank_config = fbank_config
+        self._num_target = num_target
 
         # Design Notes:
         #   HDF5:
@@ -165,15 +166,12 @@ class VCTK_VCC2020Dataset(Dataset):
         elif split == 'test':
             # target is other speaker, source:target = 1:N
             # Missing utterances in original code: E10001-E10050 (c.f. tarepan/s3prl#2)
-            sources = list(filter(lambda item_id: item_id.subtype == "eval_source", all_utterances))
+            self._sources = list(filter(lambda item_id: item_id.subtype == "eval_source", all_utterances))
             self._targets = list(filter(lambda i: i.subtype == "train_target_task1", all_utterances))
-            # Load saved pathes
+            # Load already generated vc tuples
             vc_tuples = try_load_vc_tuples(self._path_contents, num_target)
-            # Generate pathes
-            if vc_tuples is None:
-                vc_tuples = generate_vc_tuples(sources, self._targets, num_target)
-                save_vc_tuples(self._path_contents, num_target, vc_tuples)
-            self._vc_tuples = vc_tuples
+            if vc_tuples is not None:
+                self._vc_tuples = vc_tuples
 
         # Deploy dataset contents.
         contents_acquired = try_to_acquire_archive_contents(adress_archive, self._path_contents)
@@ -205,6 +203,13 @@ class VCTK_VCC2020Dataset(Dataset):
         # Statistics
         if self.split == "train":
             self._calculate_spec_stat()
+
+        # VC tuples
+        if self.split == "test":
+            # Generate vc tuples randomly
+            vc_tuples = generate_vc_tuples(self._sources, self._targets, self._num_target)
+            save_vc_tuples(self._path_contents, self._num_target, vc_tuples)
+            self._vc_tuples = vc_tuples
 
     def _extract_a_spk_emb(self, wav_path, spk_emb_path, spk_encoder):
         """Extract speaker embedding from an untterance."""
