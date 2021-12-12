@@ -27,16 +27,12 @@ downstream_expert:
     train_batch_size: 6
     eval_batch_size: 5
     
-    trdev_data_root: "/content/gdrive/MyDrive/ML_data"
+    adress_data_root: "/content/gdrive/MyDrive/ML_data"
     download: False
-    eval_data_root: "./downstream/a2a-vc-vctk/data/vcc2020"
-    spk_embs_root: "./downstream/a2a-vc-vctk/data/spk_embs/"
-    lists_root: "./downstream/a2a-vc-vctk/data/lists"
-    eval_lists_root: "./downstream/a2o-vc-vcc2020/data/lists"
     stats_root: "./downstream/a2a-vc-vctk/data/stats"
     eval_f0_path: "./downstream/a2o-vc-vcc2020/data/f0.yaml"
 
-    num_ref_samples: [10]
+    num_target: 10
 
     fbank_config:
       fs: 24000
