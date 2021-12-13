@@ -29,7 +29,6 @@ downstream_expert:
     
     adress_data_root: "/content/gdrive/MyDrive/ML_data"
     download: False
-    stats_root: "./downstream/a2a-vc-vctk/data/stats"
     eval_f0_path: "./downstream/a2o-vc-vcc2020/data/f0.yaml"
 
     num_target: 10
