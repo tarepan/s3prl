@@ -9,7 +9,7 @@
 
 import os
 import random
-from typing import List, Optional
+from typing import List
 from pathlib import Path
 import pickle
 from dataclasses import dataclass
@@ -49,13 +49,13 @@ def save_vc_tuples(content_path: Path, num_target: int, tuples: List[List[ItemId
     with open(p, "wb") as f:
         pickle.dump(tuples, f)
 
-def try_load_vc_tuples(content_path: Path, num_target: int) -> Optional[List[List[ItemId]]]:
+def load_vc_tuples(content_path: Path, num_target: int) -> List[List[ItemId]]:
     p = content_path / f"vc_{num_target}_tuples.pkl"
     if p.exists():
         with open(p, "rb") as f:
             return pickle.load(f)
     else:
-        return None
+        Exception(f"{str(p)} does not exist.")
 
 
 def generate_vc_tuples(
@@ -178,10 +178,6 @@ class VCTK_VCC2020Dataset(Dataset):
                 self._targets = list(filter(lambda i: i.subtype == "train_target_task1", all_utterances))
             else:
                 Exception(f"Corpus '{corpus_name}' is not yet supported for test split")
-            # Load already generated vc tuples
-            vc_tuples = try_load_vc_tuples(self._path_contents, num_target)
-            if vc_tuples is not None:
-                self._vc_tuples = vc_tuples
 
         # Deploy dataset contents.
         contents_acquired = try_to_acquire_archive_contents(adress_archive, self._path_contents)
@@ -191,6 +187,10 @@ class VCTK_VCC2020Dataset(Dataset):
             self._generate_dataset_contents()
             save_archive(self._path_contents, adress_archive)
             print("Dataset contents was generated and archive was saved.")
+
+        # Load vc tuples in the file
+        if split == 'test':
+            self._vc_tuples = load_vc_tuples(self._path_contents, num_target)
 
         # Report
         print(f"[Dataset] - number of data for {split}: {len(self._vc_tuples)}")
@@ -219,7 +219,6 @@ class VCTK_VCC2020Dataset(Dataset):
             # Generate vc tuples randomly
             vc_tuples = generate_vc_tuples(self._sources, self._targets, self._num_target)
             save_vc_tuples(self._path_contents, self._num_target, vc_tuples)
-            self._vc_tuples = vc_tuples
 
     def _extract_a_spk_emb(self, wav_path, spk_emb_path, spk_encoder):
         """Extract speaker embedding from an untterance."""
