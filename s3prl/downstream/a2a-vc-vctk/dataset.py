@@ -349,10 +349,10 @@ class VCTK_VCC2020Dataset(Dataset):
 
         # Test split: change input wav path name
         if self.split == "test":
-            input_wav_name = input_wav_path.replace(".wav", "")
+            input_wav_name = str(input_wav_path).replace(".wav", "")
             input_wav_path = f"{input_wav_name}_{len(spk_emb_paths)}samples.wav"
 
-        return input_wav_resample, input_wav_original, lmspc, ref_spk_emb, input_wav_path, ref_spk_name
+        return input_wav_resample, input_wav_original, lmspc, ref_spk_emb, str(input_wav_path), ref_spk_name
     
     def collate_fn(self, batch):
         """collate function used by dataloader.
