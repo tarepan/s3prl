@@ -29,6 +29,9 @@ downstream_expert:
     
     adress_data_root: "/content/gdrive/MyDrive/ML_data"
     download: False
+    corpus_train_dev: "VCTK"
+    corpus_test: "VCC20"
+    num_dev_sample: 5
     eval_f0_path: "./downstream/a2o-vc-vcc2020/data/f0.yaml"
 
     num_target: 10

@@ -98,6 +98,9 @@ class VCTK_VCC2020Dataset(Dataset):
         adress_data_root: str,
         fbank_config,
         num_target: int,
+        corpus_train_dev: str,
+        corpus_test: str,
+        num_dev_sample: int,
         download: bool = False,
         train_dev_seed=1337,
         **kwargs
@@ -112,6 +115,9 @@ class VCTK_VCC2020Dataset(Dataset):
             adress_data_root: Root adress of train/dev corpus (VCTK)
             fbank_config: Filterback configurations
             num_target: Number of target utterances per single source utterance
+            corpus_train_dev: Name of corpus for train/dev
+            corpus_test: Name of corpus for test
+            num_dev_sample: Number of dev samples per single speaker
             download: Whether to download train/dev corpus if needed
             train_dev_seed: Random seed, affect item order
         """
@@ -128,7 +134,7 @@ class VCTK_VCC2020Dataset(Dataset):
         #     No dataset-wide access, no partial access.
 
         # Get corpus
-        corpus_name = "VCTK" if (split == 'train' or split == 'dev') else "VCC20"
+        corpus_name = corpus_train_dev if (split == 'train' or split == 'dev') else corpus_test
         self._corpus = load_preset(corpus_name, root=adress_data_root, download=download)
 
         # Construct dataset adresses
@@ -150,24 +156,28 @@ class VCTK_VCC2020Dataset(Dataset):
 
         if split == 'train' or split == 'dev':
             # target is self, source:target = 1:1
-            ## Data split: [0, -10] is for train, [-5:] is for dev for each speaker
+            ## Data split: [0, -2X] is for train, [-X:] is for dev for each speaker
             is_train = split == 'train'
+            idx_dev = -1*num_dev_sample
             for spk in set(map(lambda item_id: item_id.speaker, all_utterances)):
                 utts_spk = list(map(
                     # self target
                     lambda item_id: [item_id, item_id],
                     filter(lambda item_id: item_id.speaker == spk, all_utterances)
                 ))
-                self._vc_tuples.extend(utts_spk[:-10] if is_train else utts_spk[-5:])
+                self._vc_tuples.extend(utts_spk[:2*idx_dev] if is_train else utts_spk[idx_dev:])
             random.seed(train_dev_seed)
             random.shuffle(self._vc_tuples)
             self._targets = list(map(lambda vc_tuple: vc_tuple[1], self._vc_tuples))
 
         elif split == 'test':
             # target is other speaker, source:target = 1:N
-            # Missing utterances in original code: E10001-E10050 (c.f. tarepan/s3prl#2)
-            self._sources = list(filter(lambda item_id: item_id.subtype == "eval_source", all_utterances))
-            self._targets = list(filter(lambda i: i.subtype == "train_target_task1", all_utterances))
+            if corpus_name == "VCC20":
+                # Missing utterances in original code: E10001-E10050 (c.f. tarepan/s3prl#2)
+                self._sources = list(filter(lambda item_id: item_id.subtype == "eval_source", all_utterances))
+                self._targets = list(filter(lambda i: i.subtype == "train_target_task1", all_utterances))
+            else:
+                Exception(f"Corpus '{corpus_name}' is not yet supported for test split")
             # Load already generated vc tuples
             vc_tuples = try_load_vc_tuples(self._path_contents, num_target)
             if vc_tuples is not None:
