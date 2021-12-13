@@ -9,17 +9,16 @@
 Intra-lingual Any-to-Any Voice Conversion based on S3PRL; S3PRL-VC.  
 
 ## Task
-Intra-lingual A2A/any-to-any voice conversion.  
-Trained on **VCTK**, evaluated on **VCC2020**.  
-More specifically, evaluation method is same as VCC2020 Task1.  
+The VCC2020 Task1; Intra-lingual any-to-any voice conversion.  
+Trained on VCTK, evaluated on VCC2020.  
 
 ## Implementation
 
 - model:
   - wave2mel: any S3PRL upstreams
-  - unit2mel: **Taco2-AR**
-    - speaker embedding: [d-vector] implementation by the [Resemblyzer]
-  - mel2wave: **[HiFi-GAN]**, [kan-bayashi's implementation][HiFi-GAN_impl]
+  - unit2mel: Taco2-AR
+    - speaker: [Resemblyzer]&#8203; ([d-vector])
+  - mel2wave: [HiFi-GAN], [kan-bayashi's implementation][HiFi-GAN_impl]
 
 [d-vector]: https://static.googleusercontent.com/media/research.google.com/zh-TW//pubs/archive/41939.pdf
 [Resemblyzer]: https://github.com/resemble-ai/Resemblyzer
@@ -84,8 +83,6 @@ If the command fails, please make sure there are trained results in `result/down
 **A2O/any-to-one** recipe: [a2o-vc-vcc2020](../a2o-vc-vcc2020/)
 
 ## Citation
-
-If you find this recipe useful, please consider citing following paper:
 ```
 @article{huang2021s3prl,
   title={S3PRL-VC: Open-source Voice Conversion Framework with Self-supervised Speech Representations},
