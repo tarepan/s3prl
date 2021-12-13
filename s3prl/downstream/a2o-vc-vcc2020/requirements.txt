@@ -6,4 +6,4 @@ jiwer
 resemblyzer
 git+https://github.com/tarepan/extorch.git
 git+https://github.com/tarepan/speechdatasety.git
-git+https://github.com/tarepan/speechcorpusy.git
+git+https://github.com/tarepan/speechcorpusy.git@main
