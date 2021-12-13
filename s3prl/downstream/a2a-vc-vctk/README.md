@@ -41,11 +41,6 @@ pip install -r requirements.txt
 
 ### 2. Data & Preprocessing
 ```bash
-# Download the VCC2020 datasets.
-cd data
-./vcc2020_download.sh vcc2020/
-cd ../
-
 # Download the pretrained HiFi-GAN.
 ./vocoder_download.sh ./
 ```
@@ -58,15 +53,13 @@ cd ../..
 ./downstream/a2a-vc-vctk/vc_train.sh <upstream> downstream/a2a-vc-vctk/config_ar_taco2.yaml <tag>
 ```
 
-- output1: preprocessed d-vector @ `data/spk_embs` (it takes 5-6 hours on a RTX3090)
-- output2: Intermittently generated .wav w/ Griffin-Lim @ `<root-to-s3prl>/s3prl/result/downstream/a2a_vc_vctk_<tag>_<upstream>/<step>/test/wav/`
-
-**NOTE**: By default, during testing, the d-vector of the target speaker is the average of random samples from the training set, of number `num_ref_samples`. You can change this number in the config file. The list of samples is generated automatically and saved in `data/eval_<num>sample_list.txt`.  
+Waveforms w/ Griffin-Lim are generated intermittently @ `<root-to-s3prl>/s3prl/result/downstream/a2a_vc_vctk_<tag>_<upstream>/<step>/test/wav/`
 
 ### 4. Evaluation: Waveform synthesis & objective metrics
 
 #### 4-A. Waveform synthesis and objective evaluation
 Synthesize waveforms from already generated spectrograms and objectively evaluate them.  
+
 ```bash
 cd <root-to-s3prl>/s3prl
 ./downstream/a2a-vc-vctk/decode.sh <vocoder> <result_dir>/<step>
