@@ -153,6 +153,10 @@ class VCTK_VCC2020Dataset(Dataset):
         corpus_name = corpus_train_dev if (split == 'train' or split == 'dev') else corpus_test
         self._corpus = load_preset(corpus_name, root=adress_data_root, download=download)
 
+        # Extract corpus contents
+        # This dataset do not save raw waves in dataset archive, so always need corpus contents.
+        self._corpus.get_contents()
+
         # Construct dataset adresses
         adress_archive, self._path_contents = dataset_adress(
             adress_data_root,
@@ -225,8 +229,6 @@ class VCTK_VCC2020Dataset(Dataset):
     def _generate_dataset_contents(self) -> None:
         """Generate dataset with corpus auto-download and preprocessing.
         """
-
-        self._corpus.get_contents()
 
         # Embedding
         spk_encoder = VoiceEncoder()
