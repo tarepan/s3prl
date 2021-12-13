@@ -36,6 +36,22 @@ from .utils import read_hdf5, write_hdf5
 FS = 16000
 
 
+def split_jvs(utterances: List[ItemId]) -> (List[ItemId], List[ItemId]):
+    """Split JVS corpus items into two groups."""
+
+    anothers_spk = ["95", "96", "98", "99"]
+    # Filter for train/test split of single corpus
+    ones = list(filter(
+        lambda item_id: item_id.speaker not in anothers_spk,
+        utterances
+    ))
+    anothers = list(filter(
+        lambda item_id: item_id.speaker in anothers_spk,
+        utterances
+    ))
+    return ones, anothers
+
+
 @dataclass
 class Stat:
     """Spectrogarm statistics container"""
@@ -155,6 +171,8 @@ class VCTK_VCC2020Dataset(Dataset):
         self._targets: List[ItemId] = []
 
         if split == 'train' or split == 'dev':
+            if corpus_name == "JVS":
+                all_utterances = split_jvs(all_utterances)[0]
             # target is self, source:target = 1:1
             ## Data split: [0, -2X] is for train, [-X:] is for dev for each speaker
             is_train = split == 'train'
@@ -176,6 +194,15 @@ class VCTK_VCC2020Dataset(Dataset):
                 # Missing utterances in original code: E10001-E10050 (c.f. tarepan/s3prl#2)
                 self._sources = list(filter(lambda item_id: item_id.subtype == "eval_source", all_utterances))
                 self._targets = list(filter(lambda i: i.subtype == "train_target_task1", all_utterances))
+            elif corpus_name == "JVS":
+                all_utterances = split_jvs(all_utterances)[1]
+                # 10 utterances per speaker for test source
+                self._sources = []
+                for spk in set(map(lambda item_id: item_id.speaker, all_utterances)):
+                    utts_spk = list(filter(lambda item_id: item_id.speaker == spk, all_utterances))
+                    self._sources.extend(utts_spk[:10])
+                # All test utterances are target style
+                self._targets = all_utterances
             else:
                 Exception(f"Corpus '{corpus_name}' is not yet supported for test split")
 
