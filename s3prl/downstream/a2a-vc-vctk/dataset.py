@@ -14,7 +14,9 @@ from pathlib import Path
 import pickle
 from dataclasses import dataclass
 
+from scipy.io import wavfile
 import librosa
+import soundfile as sf
 import numpy as np
 from tqdm import tqdm
 from speechcorpusy import load_preset
@@ -164,6 +166,7 @@ class VCTK_VCC2020Dataset(Dataset):
             "emb",
             f"{split}_hashed_args",
         )
+        self._get_path_wav = generate_path_getter("wav", self._path_contents)
         self.get_path_emb = generate_path_getter("emb", self._path_contents)
         self._path_stats = self._path_contents / "stats.pkl"
 
@@ -171,6 +174,8 @@ class VCTK_VCC2020Dataset(Dataset):
         all_utterances = self._corpus.get_identities()
         ## list of [content_source_utt, style_target_utt_1, style_target_utt_2, ...]
         self._vc_tuples: List[List[ItemId]] = []
+        ## list of content source, which will be preprocessed as resampled waveform
+        self._sources: List[ItemId] = []
         ## list of style target, which will be preprocessed as embedding
         self._targets: List[ItemId] = []
 
@@ -190,6 +195,7 @@ class VCTK_VCC2020Dataset(Dataset):
                 self._vc_tuples.extend(utts_spk[:2*idx_dev] if is_train else utts_spk[idx_dev:])
             random.seed(train_dev_seed)
             random.shuffle(self._vc_tuples)
+            self._sources = list(map(lambda vc_tuple: vc_tuple[0], self._vc_tuples))
             self._targets = list(map(lambda vc_tuple: vc_tuple[1], self._vc_tuples))
 
         elif split == 'test':
@@ -230,9 +236,14 @@ class VCTK_VCC2020Dataset(Dataset):
         """Generate dataset with corpus auto-download and preprocessing.
         """
 
+        # Waveform resampling for upstream input
+        for item_id in tqdm(self._sources, desc="Preprocess: Resampling", unit="utterance"):
+            wave, _ = librosa.load(self._corpus.get_item_path(item_id), sr=FS)
+            sf.write(self._get_path_wav(item_id), wave, FS, format="WAV")
+
         # Embedding
         spk_encoder = VoiceEncoder()
-        for item_id in tqdm(self._targets, desc="Preprocessing", unit="utterance"):
+        for item_id in tqdm(self._targets, desc="Preprocess: Embedding", unit="utterance"):
             self._extract_a_spk_emb(
                 self._corpus.get_item_path(item_id),
                 self.get_path_emb(item_id),
@@ -362,8 +373,8 @@ class VCTK_VCC2020Dataset(Dataset):
         spk_emb_paths = list(map(lambda item_id: self.get_path_emb(item_id), target_ids))
 
         # FS: Target sampling rate (global variable)
-        input_wav_original, _ = self._load_wav(input_wav_path, fs=self.fbank_config["fs"])
-        input_wav_resample, fs_resample = self._load_wav(input_wav_path, fs=FS)
+        input_wav_original, _ = librosa.load(input_wav_path, sr=self.fbank_config["fs"])
+        fs_resample, input_wav_resample = wavfile.read(self._get_path_wav(item_id))
 
         # ad-hoc spectrogram generation
         lmspc = logmelspectrogram(
