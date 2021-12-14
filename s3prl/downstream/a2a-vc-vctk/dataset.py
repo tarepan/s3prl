@@ -38,6 +38,11 @@ from .utils import read_hdf5, write_hdf5
 FS = 16000
 
 
+def read_npy(p: Path):
+    """Read .npy from path without `.npy`"""
+    return np.load(p.with_suffix(".npy"))
+
+
 def split_jvs(utterances: List[ItemId]) -> (List[ItemId], List[ItemId]):
     """Split JVS corpus items into two groups."""
 
@@ -295,7 +300,7 @@ class VCTK_VCC2020Dataset(Dataset):
         L = 0
         for item_id in self._sources:
             # lmspc::(Time, MelFreq)
-            lmspc = np.load(self._get_path_mel(item_id).with_suffix(".npy"))
+            lmspc = read_npy(self._get_path_mel(item_id))
             uttr_sum = np.sum(lmspc, axis=0)
             spec_stack = np.add(spec_stack, uttr_sum) if spec_stack is not None else uttr_sum
             L += lmspc.shape[0]
@@ -306,7 +311,7 @@ class VCTK_VCC2020Dataset(Dataset):
         L = 0
         for item_id in self._sources:
             # lmspc::(Time, MelFreq)
-            lmspc = np.load(self._get_path_mel(item_id).with_suffix(".npy"))
+            lmspc = read_npy(self._get_path_mel(item_id))
             uttr_sigma_sum = np.sum(np.abs(lmspc - ave), axis=0)
             sigma_stack = np.add(sigma_stack, uttr_sigma_sum) if sigma_stack is not None else uttr_sigma_sum
             L += lmspc.shape[0]
@@ -339,7 +344,7 @@ class VCTK_VCC2020Dataset(Dataset):
         # Preprocessing is done w/ `librosa`, so no worry of details (mono, bit-depth, etc).
         _, input_wav_resample = wavfile.read(self._get_path_wav(source_id))
 
-        lmspc = np.load(self._get_path_mel(source_id).with_suffix(".npy"))
+        lmspc = read_npy(self._get_path_mel(source_id))
 
         # An averaged embedding of the speaker's N utterances
         spk_emb_paths = list(map(lambda item_id: self.get_path_emb(item_id), target_ids))
