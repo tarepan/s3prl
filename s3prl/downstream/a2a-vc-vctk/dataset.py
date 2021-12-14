@@ -299,7 +299,7 @@ class VCTK_VCC2020Dataset(Dataset):
         
         # ※ Need high memory because extract all specs at once
         # [(Time, MelFreq)]
-        lmspcs = self.get_all_lmspcs()
+        lmspcs = self._get_all_lmspcs()
 
         ## Calculate average
         # ave::(MelFreq)
@@ -345,7 +345,7 @@ class VCTK_VCC2020Dataset(Dataset):
         """Number of .wav files (and same number of embeddings)"""
         return len(self._vc_tuples)
 
-    def get_all_lmspcs(self):
+    def _get_all_lmspcs(self):
         """Acquire log-mel spectrograms from all waveforms.
 
         Returns:
