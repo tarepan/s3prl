@@ -212,6 +212,8 @@ class DownstreamExpert(nn.Module):
 
         # Loss value
         loss = torch.FloatTensor(records['loss']).mean().item()
+        print(f'{split} loss: {loss:.6f}')
+        logger.add_scalar(f'example/{split}-{loss}', loss, global_step=global_step)
 
         if split in ["dev", "test"]:
 
@@ -264,13 +266,4 @@ class DownstreamExpert(nn.Module):
                     self.datarc["fbank_config"]["fs"],
                     (y * np.iinfo(np.int16).max).astype(np.int16),
                 )
-
-        print(f'{split} loss: {loss:.6f}')
-
-        save_names = []
-        logger.add_scalar(
-            f'example/{split}-{loss}',
-            loss,
-            global_step=global_step
-        )
-        return save_names
+        return []
