@@ -376,6 +376,7 @@ class Runner():
                         batch_ids = batch_ids,
                         total_batch_num = len(dataloader),
                     )
+                    # Reset containers
                     batch_ids = []
                     records = defaultdict(list)
 

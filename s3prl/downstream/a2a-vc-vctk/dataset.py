@@ -350,7 +350,7 @@ class VCTK_VCC2020Dataset(Dataset):
 
         Returns:
             input_wav_resample (ndarray): Waveform used by Upstream (should be sr=FS)
-            input_wav_original (ndarray): The waveform, acquired with sr=fbank_config["fs"]
+            None
             lmspc: log-mel spectrogram
             ref_spk_emb: Averaged self|target speaker embedding
             input_wav_path: Path of .wav file, modified when split==`test`
@@ -390,17 +390,16 @@ class VCTK_VCC2020Dataset(Dataset):
             input_wav_name = str(input_wav_path).replace(".wav", "")
             input_wav_path = f"{input_wav_name}_{len(spk_emb_paths)}samples.wav"
 
-        return input_wav_resample, input_wav_original, lmspc, ref_spk_emb, str(input_wav_path), ref_spk_name
+        return input_wav_resample, None, lmspc, ref_spk_emb, str(input_wav_path), ref_spk_name
     
     def collate_fn(self, batch):
         """collate function used by dataloader.
 
         Sort data with feature time length, then pad features.
         Args:
-            batch: (B, input_wav_resample, input_wav_original, lmspc, ref_spk_emb, input_wav_path, ref_spk_name)
+            batch: (B, input_wav_resample, None, lmspc, ref_spk_emb, input_wav_path, ref_spk_name)
         Returns:
             wavs: List[Tensor(`input_wav_resample`)]
-            wavs_2: List[Tensor(`input_wav_original`)]
             acoustic_features: List[Tensor(`lmspc`)]
             acoustic_features_padded: `acoustic_features` padded by PyTorch function
             acoustic_feature_lengths: Tensor(feature time length)
@@ -409,11 +408,10 @@ class VCTK_VCC2020Dataset(Dataset):
             ref_spk_names: List[`ref_spk_name`]
         """
 
-        sorted_batch = sorted(batch, key=lambda x: -x[1].shape[0])
+        sorted_batch = sorted(batch, key=lambda x: -x[0].shape[0])
 
         bs = len(sorted_batch) # batch_size
         wavs = [torch.from_numpy(sorted_batch[i][0]) for i in range(bs)]
-        wavs_2 = [torch.from_numpy(sorted_batch[i][1]) for i in range(bs)] # This is used for obj eval
         acoustic_features = [torch.from_numpy(sorted_batch[i][2]) for i in range(bs)]
         acoustic_features_padded = pad_sequence(acoustic_features, batch_first=True)
         acoustic_feature_lengths = torch.from_numpy(np.array([acoustic_feature.size(0) for acoustic_feature in acoustic_features]))
@@ -421,4 +419,4 @@ class VCTK_VCC2020Dataset(Dataset):
         wav_paths = [sorted_batch[i][4] for i in range(bs)]
         ref_spk_names = [sorted_batch[i][5] for i in range(bs)]
         
-        return wavs, wavs_2, acoustic_features, acoustic_features_padded, acoustic_feature_lengths, wav_paths, ref_spk_embs, ref_spk_names
+        return wavs, acoustic_features, acoustic_features_padded, acoustic_feature_lengths, wav_paths, ref_spk_embs, ref_spk_names
