@@ -10,6 +10,7 @@
 import os
 import numpy as np
 from dataclasses import dataclass
+from pathlib import Path
 
 from scipy.io.wavfile import write
 from tqdm import tqdm
@@ -142,9 +143,8 @@ class DownstreamExpert(nn.Module):
                 acoustic_features,
                 acoustic_features_padded,
                 acoustic_feature_lengths,
-                wav_paths,
                 ref_spk_embs,
-                ref_spk_names, 
+                vc_ids,
                 records,
                 **kwargs):
         """S3PRL interface for calculation.
@@ -155,9 +155,8 @@ class DownstreamExpert(nn.Module):
             acoustic_features: List[Tensor(`lmspc`)], not used...?
             acoustic_features_padded: `acoustic_features` padded by PyTorch function
             acoustic_feature_lengths: Tensor(feature time length)
-            wav_paths: List[`input_wav_path`], pass through to `log_records`
             ref_spk_embs: Tensor(`ref_spk_emb`)
-            ref_spk_names: List[`ref_spk_name`], pass through to `log_records`
+            vc_ids: List[(target_spk, source_spk, uttr_name)]
         """
 
         device = input_features[0].device
@@ -179,8 +178,7 @@ class DownstreamExpert(nn.Module):
             # save the unnormalized features for dev and test sets
             records["predicted_features"] += predicted_features.cpu().numpy().tolist()
             records["feature_lengths"] += predicted_feature_lengths.cpu().numpy().tolist()
-            records["wav_paths"] += wav_paths
-            records["ref_spk_names"] += ref_spk_names
+            records["vc_ids"] += vc_ids
         # Training (w/ teacher-forcing)
         else:
             # The forward
@@ -211,10 +209,9 @@ class DownstreamExpert(nn.Module):
             split: `dev` or `test`?
             records: Logging target record
                 loss
-                wav_paths
-                ref_spk_names
                 feature_lengths
                 predicted_features
+                vc_ids
             logger: (maybe) TensorBoard logger
             global_step: Number of global step, used for file name and TB logging
             batch_ids: Not Used
@@ -231,39 +228,25 @@ class DownstreamExpert(nn.Module):
 
         # Generate waveform w/ Griffin-Lim and save it
         if split in ["dev", "test"]:
-            # f"{self.expdir}/{global_step}/{"dev" | "test"}/hdf5"
-            hdf5_save_dir = os.path.join(self.expdir, str(global_step), split, "hdf5")
-            os.makedirs(hdf5_save_dir, exist_ok=True)
-            # f"{self.expdir}/{global_step}/{"dev" | "test"}/wav"
-            wav_save_dir = os.path.join(self.expdir, str(global_step), split, "wav")
-            os.makedirs(wav_save_dir, exist_ok=True)
+            # Path preparation
+            root = Path(self.expdir) / str(global_step) / split
+            hdf5_save_dir = root / "hdf5"
+            wav_save_dir = root  / "wav"
+            hdf5_save_dir.mkdir(exist_ok=True, parents=True)
+            wav_save_dir.mkdir(exist_ok=True, parents=True)
 
-            # wav_path in `records["wav_paths"]` & ref_spk_name in records["ref_spk_names"]
-            for i, (wav_path, ref_spk_name) in enumerate(tqdm(
-                list(zip(records["wav_paths"], records["ref_spk_names"])),
+            for i, (tgt_spk, src_spk, uttr_name) in enumerate(tqdm(
+                records["vc_ids"],
                 dynamic_ncols=True, desc="Saving files"
             )):
+                # No.i in a batch
                 length = int(records["feature_lengths"][i])
                 fbank = np.array(records["predicted_features"][i])[:length]
 
                 # Path preparation
-                if split == "dev":
-                    # "{...}/hdf5/{wav_path.parent}_{wav_path.stem}.h5"
-                    # original intent: speaker name?
-                    hdf5_save_path = os.path.join(hdf5_save_dir, "_".join(wav_path.split("/")[-2:]).replace(".wav", ".h5"))
-                    # "{...}/wav/{wav_path.parent}_{wav_path.stem}.wav"
-                    wav_save_path = os.path.join(wav_save_dir, "_".join(wav_path.split("/")[-2:]))
-                elif split == "test":
-                    # "{N}samples"
-                    num_samples = os.path.basename(wav_path).replace(".wav", "").split("_")[-1]
-                    # "{...}/hdf5/{N}samples"
-                    os.makedirs(os.path.join(hdf5_save_dir, num_samples), exist_ok=True)
-                    # "{...}/wav/{N}samples"
-                    os.makedirs(os.path.join(wav_save_dir, num_samples), exist_ok=True)
-                    # "{...}/hdf5/{N}samples/{ref_spk_name}_{wav_path.parent}_{wav_path.stem}.h5"
-                    hdf5_save_path = os.path.join(hdf5_save_dir, num_samples, "_".join([ref_spk_name] + wav_path.split("/")[-2:]).replace(".wav", ".h5"))
-                    # "{...}/hdf5/{N}samples/{ref_spk_name}_{wav_path.parent}_{wav_path.stem}.wav"
-                    wav_save_path = os.path.join(wav_save_dir, num_samples, "_".join([ref_spk_name] + wav_path.split("/")[-2:]))
+                file_stem = f"{tgt_spk}_from_{src_spk}_{uttr_name}"
+                hdf5_save_path = hdf5_save_dir / f"{file_stem}.h5"
+                wav_save_path = wav_save_dir / f"{file_stem}.wav"
 
                 # save generated features into hdf5 files
                 write_hdf5(hdf5_save_path, "feats", fbank)

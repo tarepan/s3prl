@@ -350,18 +350,16 @@ class VCTK_VCC2020Dataset(Dataset):
 
         Returns:
             input_wav_resample (ndarray): Waveform used by Upstream (should be sr=FS)
-            None
             lmspc: log-mel spectrogram
             ref_spk_emb: Averaged self|target speaker embedding
-            input_wav_path: Path of .wav file, modified when split==`test`
-            ref_spk_name: Speaker name of embedding
+            vc_identity (str, str, str): (target_speaker, source_speaker, utterance_name)
         """
 
         selected = self._vc_tuples[index]
-        input_wav_path = self._corpus.get_item_path(selected[0])
-        spk_emb_paths = list(map(lambda item_id: self.get_path_emb(item_id), selected[1:]))
-        # Speaker name of target embedding
-        ref_spk_name = selected[1].speaker
+        source_id = selected[0]
+        target_ids = selected[1:]
+        input_wav_path = self._corpus.get_item_path(source_id)
+        spk_emb_paths = list(map(lambda item_id: self.get_path_emb(item_id), target_ids))
 
         # FS: Target sampling rate (global variable)
         input_wav_original, _ = self._load_wav(input_wav_path, fs=self.fbank_config["fs"])
@@ -385,38 +383,34 @@ class VCTK_VCC2020Dataset(Dataset):
         ref_spk_embs = np.stack(ref_spk_embs, axis=0)
         ref_spk_emb = np.mean(ref_spk_embs, axis=0)
 
-        # Test split: change input wav path name
-        if self.split == "test":
-            input_wav_name = str(input_wav_path).replace(".wav", "")
-            input_wav_path = f"{input_wav_name}_{len(spk_emb_paths)}samples.wav"
+        # VC identity (target_speaker, source_speaker, utterance_name)
+        vc_identity = (target_ids[0].speaker, source_id.speaker, source_id.name)
 
-        return input_wav_resample, None, lmspc, ref_spk_emb, str(input_wav_path), ref_spk_name
+        return input_wav_resample, lmspc, ref_spk_emb, vc_identity
     
     def collate_fn(self, batch):
         """collate function used by dataloader.
 
         Sort data with feature time length, then pad features.
         Args:
-            batch: (B, input_wav_resample, None, lmspc, ref_spk_emb, input_wav_path, ref_spk_name)
+            batch: (B, input_wav_resample, lmspc, ref_spk_emb, vc_identity)
         Returns:
             wavs: List[Tensor(`input_wav_resample`)]
             acoustic_features: List[Tensor(`lmspc`)]
             acoustic_features_padded: `acoustic_features` padded by PyTorch function
             acoustic_feature_lengths: Tensor(feature time length)
-            wav_paths: List[`input_wav_path`]
             ref_spk_embs: Tensor(`ref_spk_emb`)
-            ref_spk_names: List[`ref_spk_name`]
+            vc_ids: List[(target_speaker, source_speaker, utterance_name)]
         """
 
-        sorted_batch = sorted(batch, key=lambda x: -x[0].shape[0])
+        # Sort
+        sorted_batch = sorted(batch, key=lambda item: -item[0].shape[0])
 
-        bs = len(sorted_batch) # batch_size
-        wavs = [torch.from_numpy(sorted_batch[i][0]) for i in range(bs)]
-        acoustic_features = [torch.from_numpy(sorted_batch[i][2]) for i in range(bs)]
+        wavs =                  list(map(lambda item: torch.from_numpy(item[0]), sorted_batch))
+        acoustic_features =     list(map(lambda item: torch.from_numpy(item[1]), sorted_batch))
         acoustic_features_padded = pad_sequence(acoustic_features, batch_first=True)
-        acoustic_feature_lengths = torch.from_numpy(np.array([acoustic_feature.size(0) for acoustic_feature in acoustic_features]))
-        ref_spk_embs = torch.from_numpy(np.array([sorted_batch[i][3] for i in range(bs)]))
-        wav_paths = [sorted_batch[i][4] for i in range(bs)]
-        ref_spk_names = [sorted_batch[i][5] for i in range(bs)]
-        
-        return wavs, acoustic_features, acoustic_features_padded, acoustic_feature_lengths, wav_paths, ref_spk_embs, ref_spk_names
+        acoustic_feature_lengths = torch.from_numpy(np.array(list(map(lambda feat: feat.size(0), acoustic_features))))
+        ref_spk_embs = torch.from_numpy(np.array(list(map(lambda item: item[2],  sorted_batch))))
+        vc_ids =               list(map(lambda item:                   item[3],  sorted_batch))
+
+        return wavs, acoustic_features, acoustic_features_padded, acoustic_feature_lengths, ref_spk_embs, vc_ids
