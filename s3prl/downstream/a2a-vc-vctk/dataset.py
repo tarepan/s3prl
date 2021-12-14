@@ -246,11 +246,9 @@ class VCTK_VCC2020Dataset(Dataset):
         # Embedding
         spk_encoder = VoiceEncoder()
         for item_id in tqdm(self._targets, desc="Preprocess: Embedding", unit="utterance"):
-            self._extract_a_spk_emb(
-                self._corpus.get_item_path(item_id),
-                self.get_path_emb(item_id),
-                spk_encoder,
-            )
+            wav = preprocess_wav(self._corpus.get_item_path(item_id))
+            embedding = spk_encoder.embed_utterance(wav)
+            write_hdf5(str(self.get_path_emb(item_id)), "spk_emb", embedding.astype(np.float32))
 
         # Mel-spectrogram
         for item_id in tqdm(self._sources, desc="Preprocess: Melspectrogram", unit="utterance"):
@@ -278,15 +276,6 @@ class VCTK_VCC2020Dataset(Dataset):
             # Generate vc tuples randomly
             vc_tuples = generate_vc_tuples(self._sources, self._targets, self._num_target)
             save_vc_tuples(self._path_contents, self._num_target, vc_tuples)
-
-    def _extract_a_spk_emb(self, wav_path, spk_emb_path, spk_encoder):
-        """Extract speaker embedding from an untterance."""
-        ## on-memory preprocessing
-        wav = preprocess_wav(wav_path)
-        embedding = spk_encoder.embed_utterance(wav)
-        # save spk emb
-        # spk_emb_path/(inHDF5)spk_emb
-        write_hdf5(str(spk_emb_path), "spk_emb", embedding.astype(np.float32))
 
     def acquire_spec_stat(self):
         """Acquire scaler, the statistics (mean and variance) of mel-spectrograms"""
