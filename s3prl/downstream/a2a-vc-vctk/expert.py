@@ -95,6 +95,7 @@ class DownstreamExpert(nn.Module):
         self.test_dataset = VCTK_VCC2020Dataset('test', **self.datarc)
 
         # Load dataset-wise statistics
+        # todo: Is this (AR normalization besed on only trainings, over speaker) good?
         self.stats = self.train_dataset.acquire_spec_stat()
 
         # define model and loss
