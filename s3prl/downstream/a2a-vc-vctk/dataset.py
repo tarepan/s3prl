@@ -32,7 +32,7 @@ from .utils import logmelspectrogram
 from .utils import read_hdf5, write_hdf5
 
 
-# Hardcoded resampling rate
+# Hardcoded resampling rate for upstream
 FS = 16000
 
 
@@ -349,7 +349,7 @@ class VCTK_VCC2020Dataset(Dataset):
         Load raw waveform, resampled waveform and log-mel-spec in place (not preprocessed).
 
         Returns:
-            input_wav_resample (ndarray): The waveform, could be resampled by `FS`
+            input_wav_resample (ndarray): Waveform used by Upstream (should be sr=FS)
             input_wav_original (ndarray): The waveform, acquired with sr=fbank_config["fs"]
             lmspc: log-mel spectrogram
             ref_spk_emb: Averaged self|target speaker embedding
