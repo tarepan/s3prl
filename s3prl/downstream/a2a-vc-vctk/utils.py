@@ -225,6 +225,12 @@ def make_non_pad_mask(lengths, xs=None, length_dim=-1):
 
 ################################################################################
 
+def read_npy(p: Path):
+    """Read .npy from path without `.npy`"""
+    return np.load(p.with_suffix(".npy"))
+
+################################################################################
+
 # The following function are based on:
 # https://github.com/kan-bayashi/ParallelWaveGAN/blob/master/parallel_wavegan/utils/utils.py
 
@@ -237,32 +243,6 @@ def find_files(root_dir, query="*.wav", include_root_dir=True):
         files = [file_.replace(root_dir + "/", "") for file_ in files]
 
     return files
-
-def read_hdf5(hdf5_name, hdf5_path):
-    """Read hdf5 dataset.
-
-    Args:
-        hdf5_name (str): Filename of hdf5 file.
-        hdf5_path (str): Dataset name in hdf5 file.
-
-    Return:
-        any: Dataset values.
-
-    """
-    if not os.path.exists(hdf5_name):
-        logging.error(f"There is no such a hdf5 file ({hdf5_name}).")
-        sys.exit(1)
-
-    hdf5_file = h5py.File(hdf5_name, "r")
-
-    if hdf5_path not in hdf5_file:
-        logging.error(f"There is no such a data in hdf5 file. ({hdf5_path})")
-        sys.exit(1)
-
-    hdf5_data = hdf5_file[hdf5_path][()]
-    hdf5_file.close()
-
-    return hdf5_data
 
 
 def write_hdf5(hdf5_name, hdf5_path, write_data, is_overwrite=True):

@@ -25,7 +25,7 @@ from torch.nn.utils.rnn import pad_sequence
 from .model import Model
 from .dataset import VCTK_VCC2020Dataset, Stat
 from .utils import make_non_pad_mask
-from .utils import read_hdf5, write_hdf5
+from .utils import write_hdf5
 from .utils import logmelspc_to_linearspc, griffin_lim
 
 FS = 16000
