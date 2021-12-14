@@ -153,7 +153,7 @@ class VCTK_VCC2020Dataset(Dataset):
             f"{split}_hashed_args",
         )
         self._get_path_wav = generate_path_getter("wav", self._path_contents)
-        self.get_path_emb = generate_path_getter("emb", self._path_contents)
+        self._get_path_emb = generate_path_getter("emb", self._path_contents)
         self._get_path_mel = generate_path_getter("mel", self._path_contents)
         self._path_stats = self._path_contents / "stats.pkl"
 
@@ -236,7 +236,7 @@ class VCTK_VCC2020Dataset(Dataset):
         for item_id in tqdm(self._targets, desc="Preprocess: Embedding", unit="utterance"):
             wav = preprocess_wav(self._corpus.get_item_path(item_id))
             embedding = spk_encoder.embed_utterance(wav)
-            np.save(self.get_path_emb(item_id), embedding.astype(np.float32))
+            np.save(self._get_path_emb(item_id), embedding.astype(np.float32))
 
         # Mel-spectrogram
         for item_id in tqdm(self._sources, desc="Preprocess: Melspectrogram", unit="utterance"):
@@ -330,7 +330,7 @@ class VCTK_VCC2020Dataset(Dataset):
         lmspc = read_npy(self._get_path_mel(source_id))
 
         # An averaged embedding of the speaker's N utterances
-        ref_spk_embs = [read_npy(self.get_path_emb(item_id)) for item_id in target_ids]
+        ref_spk_embs = [read_npy(self._get_path_emb(item_id)) for item_id in target_ids]
         ref_spk_emb = np.mean(np.stack(ref_spk_embs, axis=0), axis=0)
 
         # VC identity (target_speaker,        source_speaker,    utterance_name)
