@@ -347,10 +347,8 @@ class VCTK_VCC2020Dataset(Dataset):
         lmspc = read_npy(self._get_path_mel(source_id))
 
         # An averaged embedding of the speaker's N utterances
-        spk_emb_paths = list(map(lambda item_id: self.get_path_emb(item_id), target_ids))
-        ref_spk_embs = [read_hdf5(spk_emb_path, "spk_emb") for spk_emb_path in spk_emb_paths]
-        ref_spk_embs = np.stack(ref_spk_embs, axis=0)
-        ref_spk_emb = np.mean(ref_spk_embs, axis=0)
+        ref_spk_embs = [read_hdf5(self.get_path_emb(item_id), "spk_emb") for item_id in target_ids]
+        ref_spk_emb = np.mean(np.stack(ref_spk_embs, axis=0), axis=0)
 
         # VC identity (target_speaker,        source_speaker,    utterance_name)
         vc_identity = (target_ids[0].speaker, source_id.speaker, source_id.name)
