@@ -238,6 +238,7 @@ class VCTK_VCC2020Dataset(Dataset):
         """
 
         # Waveform resampling for upstream input
+        # Low sampling rate is enough because waveforms are finally encoded into compressed feature.
         for item_id in tqdm(self._sources, desc="Preprocess: Resampling", unit="utterance"):
             wave, _ = librosa.load(self._corpus.get_item_path(item_id), sr=FS)
             sf.write(self._get_path_wav(item_id), wave, FS, format="WAV")
@@ -374,33 +375,31 @@ class VCTK_VCC2020Dataset(Dataset):
         
 
     def __getitem__(self, index):
-        """
-        Load raw waveform, resampled waveform and log-mel-spec in place (not preprocessed).
+        """Load waveforms, mel-specs, speaker embeddings and data identities.
 
         Returns:
             input_wav_resample (ndarray): Waveform used by Upstream (should be sr=FS)
-            lmspc: log-mel spectrogram
-            ref_spk_emb: Averaged self|target speaker embedding
+            lmspc (ndarray): log-mel spectrogram
+            ref_spk_emb: Averaged self|target speaker embeddings
             vc_identity (str, str, str): (target_speaker, source_speaker, utterance_name)
         """
 
         selected = self._vc_tuples[index]
         source_id = selected[0]
         target_ids = selected[1:]
-        spk_emb_paths = list(map(lambda item_id: self.get_path_emb(item_id), target_ids))
 
-        # Resampled (could be downsampled) waveform for upstream
-        #     Preprocessing is done w/ `librosa`, so no worry of mono, bit-depth, etc.
-        fs_resample, input_wav_resample = wavfile.read(self._get_path_wav(item_id)) # todo: source_id
+        # Preprocessing is done w/ `librosa`, so no worry of details (mono, bit-depth, etc).
+        _, input_wav_resample = wavfile.read(self._get_path_wav(source_id))
+
+        lmspc = np.load(self._get_path_mel(source_id).with_suffix(".npy"))
 
         # An averaged embedding of the speaker's N utterances
+        spk_emb_paths = list(map(lambda item_id: self.get_path_emb(item_id), target_ids))
         ref_spk_embs = [read_hdf5(spk_emb_path, "spk_emb") for spk_emb_path in spk_emb_paths]
         ref_spk_embs = np.stack(ref_spk_embs, axis=0)
         ref_spk_emb = np.mean(ref_spk_embs, axis=0)
 
-        lmspc = np.load(self._get_path_mel(source_id).with_suffix(".npy"))
-
-        # VC identity (target_speaker, source_speaker, utterance_name)
+        # VC identity (target_speaker,        source_speaker,    utterance_name)
         vc_identity = (target_ids[0].speaker, source_id.speaker, source_id.name)
 
         return input_wav_resample, lmspc, ref_spk_emb, vc_identity
