@@ -142,14 +142,6 @@ class VCTK_VCC2020Dataset(Dataset):
         self.fbank_config = fbank_config
         self._num_target = num_target
 
-        # Design Notes:
-        #   HDF5:
-        #     HDF5 is over-enginerring.
-        #     Currently it is used only for embeddings, and all embeddings are saved
-        #     in different .h5 files.
-        #     No dataset-wide access, no partial access.
-
-        # Get corpus
         corpus_name = corpus_train_dev if (split == 'train' or split == 'dev') else corpus_test
         self._corpus = load_preset(corpus_name, root=adress_data_root, download=download)
 
