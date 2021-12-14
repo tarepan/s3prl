@@ -224,7 +224,7 @@ class DownstreamExpert(nn.Module):
         # Loss logging in console and TB
         loss = torch.FloatTensor(records['loss']).mean().item()
         print(f'{split} loss: {loss:.6f}')
-        logger.add_scalar(f'example/{split}-{loss}', loss, global_step=global_step)
+        logger.add_scalar(f'example/{split}', loss, global_step=global_step)
 
         # Generate waveform w/ Griffin-Lim and save it
         if split in ["dev", "test"]:
