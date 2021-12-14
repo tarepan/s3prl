@@ -539,7 +539,8 @@ class Model(nn.Module):
                 predicted_list += [self.proj(z_list[-1]).view(B, self.output_dim, -1)] # projection is done here to ensure output dim
                 # teacher-forcing if `target` else pure-autoregressive
                 prev_out = targets[t] if targets is not None else predicted_list[-1].squeeze(-1)
-                prev_out = self.normalize(prev_out) # apply normalization
+                # AR spectrum is normalized (todo: could be moved up, but it change t=0 behavior)
+                prev_out = self.normalize(prev_out)
                 # /Single time step
             predicted = torch.cat(predicted_list, dim=2)
             predicted = predicted.transpose(1, 2)  # (B, hidden_dim, Lmax) -> (B, Lmax, hidden_dim)
