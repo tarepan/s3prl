@@ -168,6 +168,7 @@ class VCTK_VCC2020Dataset(Dataset):
         )
         self._get_path_wav = generate_path_getter("wav", self._path_contents)
         self.get_path_emb = generate_path_getter("emb", self._path_contents)
+        self._get_path_mel = generate_path_getter("mel", self._path_contents)
         self._path_stats = self._path_contents / "stats.pkl"
 
         # Select data identities.
@@ -249,6 +250,23 @@ class VCTK_VCC2020Dataset(Dataset):
                 self.get_path_emb(item_id),
                 spk_encoder,
             )
+
+        # Mel-spectrogram
+        for item_id in tqdm(self._sources, desc="Preprocess: Melspectrogram", unit="utterance"):
+            # 'Not too downsampled' waveform for feature generation
+            wave, sr = librosa.load(self._corpus.get_item_path(item_id), sr=self.fbank_config["fs"])
+            lmspc = logmelspectrogram(
+                x=wave,
+                fs=sr,
+                n_mels=self.fbank_config["n_mels"],
+                n_fft=self.fbank_config["n_fft"],
+                n_shift=self.fbank_config["n_shift"],
+                win_length=self.fbank_config["win_length"],
+                window=self.fbank_config["window"],
+                fmin=self.fbank_config["fmin"],
+                fmax=self.fbank_config["fmax"],
+            )
+            np.save(self._get_path_mel(item_id), lmspc)
 
         # Statistics
         if self.split == "train":
@@ -369,30 +387,18 @@ class VCTK_VCC2020Dataset(Dataset):
         selected = self._vc_tuples[index]
         source_id = selected[0]
         target_ids = selected[1:]
-        input_wav_path = self._corpus.get_item_path(source_id)
         spk_emb_paths = list(map(lambda item_id: self.get_path_emb(item_id), target_ids))
 
-        # FS: Target sampling rate (global variable)
-        input_wav_original, _ = librosa.load(input_wav_path, sr=self.fbank_config["fs"])
-        fs_resample, input_wav_resample = wavfile.read(self._get_path_wav(item_id))
-
-        # ad-hoc spectrogram generation
-        lmspc = logmelspectrogram(
-            x=input_wav_original,
-            fs=self.fbank_config["fs"],
-            n_mels=self.fbank_config["n_mels"],
-            n_fft=self.fbank_config["n_fft"],
-            n_shift=self.fbank_config["n_shift"],
-            win_length=self.fbank_config["win_length"],
-            window=self.fbank_config["window"],
-            fmin=self.fbank_config["fmin"],
-            fmax=self.fbank_config["fmax"],
-        )
+        # Resampled (could be downsampled) waveform for upstream
+        #     Preprocessing is done w/ `librosa`, so no worry of mono, bit-depth, etc.
+        fs_resample, input_wav_resample = wavfile.read(self._get_path_wav(item_id)) # todo: source_id
 
         # An averaged embedding of the speaker's N utterances
         ref_spk_embs = [read_hdf5(spk_emb_path, "spk_emb") for spk_emb_path in spk_emb_paths]
         ref_spk_embs = np.stack(ref_spk_embs, axis=0)
         ref_spk_emb = np.mean(ref_spk_embs, axis=0)
+
+        lmspc = np.load(self._get_path_mel(source_id).with_suffix(".npy"))
 
         # VC identity (target_speaker, source_speaker, utterance_name)
         vc_identity = (target_ids[0].speaker, source_id.speaker, source_id.name)
