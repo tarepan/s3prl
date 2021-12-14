@@ -79,6 +79,10 @@ cd <root-to-s3prl>/s3prl
 
 If the command fails, please make sure there are trained results in `result/downstream/a2a_vc_vctk_<tag>_<upstream>/`.
 
+## Change from original s3prl-vc
+- Waveforms for melspec are resampled with `fbank_config["fs"]` (original: `sr=None`)
+  - STFT parameters depends on sampling rate, so raw waveform should have intended sr
+
 ## Related Tasks
 **A2O/any-to-one** recipe: [a2o-vc-vcc2020](../a2o-vc-vcc2020/)
 

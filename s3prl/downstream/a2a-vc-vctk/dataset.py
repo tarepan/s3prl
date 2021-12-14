@@ -295,31 +295,33 @@ class VCTK_VCC2020Dataset(Dataset):
         return scaler
 
     def _calculate_spec_stat(self):
-        """Calculate mean and variance of spectrograms."""
-        
-        # ※ Need high memory because extract all specs at once
-        # [(Time, MelFreq)]
-        lmspcs = self._get_all_lmspcs()
+        """Calculate mean and variance of source spectrograms."""
 
-        ## Calculate average
-        # ave::(MelFreq)
-        ave = np.zeros(lmspcs[0].shape[1])
-        L = 0
-        # spectrogram::(Time, MelFreq)
-        for spectrogram in lmspcs:
-            ave = np.add(ave, np.sum(spectrogram, axis=0))
-            L += spectrogram.shape[0]
-        ave = ave/L
+        # Implementation Notes:
+        #   Dataset could be huge, so loading all spec could cause memory overflow.
+        #   For this reason, this implementation repeat 'load a spec and stack stats'.
 
-        ## Calculate sigma
-        # sigma::(MelFreq)
-        sigma = np.zeros(lmspcs[0].shape[1])
+        # average spectrum over source utterances :: (MelFreq)
+        spec_stack = None
         L = 0
-        # spectrogram::(Time, MelFreq)
-        for spectrogram in lmspcs:
-            sigma = np.add(sigma, np.sum(np.abs(spectrogram - ave), axis=0))
-            L += spectrogram.shape[0]
-        sigma = sigma/L
+        for item_id in self._sources:
+            # lmspc::(Time, MelFreq)
+            lmspc = np.load(self._get_path_mel(item_id).with_suffix(".npy"))
+            uttr_sum = np.sum(lmspc, axis=0)
+            spec_stack = np.add(spec_stack, uttr_sum) if spec_stack is not None else uttr_sum
+            L += lmspc.shape[0]
+        ave = spec_stack/L
+
+        ## sigma in each frequency bin :: (MelFreq)
+        sigma_stack = None
+        L = 0
+        for item_id in self._sources:
+            # lmspc::(Time, MelFreq)
+            lmspc = np.load(self._get_path_mel(item_id).with_suffix(".npy"))
+            uttr_sigma_sum = np.sum(np.abs(lmspc - ave), axis=0)
+            sigma_stack = np.add(sigma_stack, uttr_sigma_sum) if sigma_stack is not None else uttr_sigma_sum
+            L += lmspc.shape[0]
+        sigma = sigma_stack/L
 
         scaler = Stat(ave, sigma)
 
@@ -327,52 +329,9 @@ class VCTK_VCC2020Dataset(Dataset):
         with open(self._path_stats, "wb") as f:
             pickle.dump(scaler, f)
 
-    def _load_wav(self, wav_path, fs):
-        """Load wav file with resampling if needed
-
-        Args:
-            wav_path: Adress of waveform
-            fs: Sampling frequency
-        Returns:
-            (Time) Single-channel waveform
-        """
-        # use librosa to resample. librosa gives range [-1, 1]
-        # mono=True in default, so this is single-channel waveform
-        wav, sr = librosa.load(wav_path, sr=fs)
-        return wav, sr
-
     def __len__(self):
         """Number of .wav files (and same number of embeddings)"""
         return len(self._vc_tuples)
-
-    def _get_all_lmspcs(self):
-        """Acquire log-mel spectrograms from all waveforms.
-
-        Returns:
-            [(Time, MelFreq)] List of log-mel spectrogram
-        """
-
-        lmspcs = []
-        for xs in tqdm(self._vc_tuples, dynamic_ncols=True, desc="Extracting target acoustic features"):
-            # input_wav_path = 
-            input_wav_path = self._corpus.get_item_path(xs[0])
-            # (Time), (Time)
-            input_wav_original, fs_original = self._load_wav(input_wav_path, fs=None)
-            # (Time) => (Time, MelFreq)
-            lmspc = logmelspectrogram(
-                x=input_wav_original,
-                fs=fs_original,
-                n_mels=self.fbank_config["n_mels"],
-                n_fft=self.fbank_config["n_fft"],
-                n_shift=self.fbank_config["n_shift"],
-                win_length=self.fbank_config["win_length"],
-                window=self.fbank_config["window"],
-                fmin=self.fbank_config["fmin"],
-                fmax=self.fbank_config["fmax"],
-            )
-            lmspcs.append(lmspc)
-        return lmspcs
-        
 
     def __getitem__(self, index):
         """Load waveforms, mel-specs, speaker embeddings and data identities.
