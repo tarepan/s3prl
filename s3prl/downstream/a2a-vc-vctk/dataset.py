@@ -29,7 +29,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.dataset import Dataset
 
 from resemblyzer import preprocess_wav, VoiceEncoder
-from .utils import logmelspectrogram, read_npy
+from .utils import logmelspectrogram, read_npy, write_npy
 
 
 # Hardcoded resampling rate for upstream
@@ -229,14 +229,16 @@ class VCTK_VCC2020Dataset(Dataset):
         # Low sampling rate is enough because waveforms are finally encoded into compressed feature.
         for item_id in tqdm(self._sources, desc="Preprocess: Resampling", unit="utterance"):
             wave, _ = librosa.load(self._corpus.get_item_path(item_id), sr=FS)
-            sf.write(self._get_path_wav(item_id), wave, FS, format="WAV")
+            p = self._get_path_wav(item_id)
+            p.parent.mkdir(exist_ok=True, parents=True)
+            sf.write(p, wave, FS, format="WAV")
 
         # Embedding
         spk_encoder = VoiceEncoder()
         for item_id in tqdm(self._targets, desc="Preprocess: Embedding", unit="utterance"):
             wav = preprocess_wav(self._corpus.get_item_path(item_id))
             embedding = spk_encoder.embed_utterance(wav)
-            np.save(self._get_path_emb(item_id), embedding.astype(np.float32))
+            write_npy(self._get_path_emb(item_id), embedding.astype(np.float32))
 
         # Mel-spectrogram
         for item_id in tqdm(self._sources, desc="Preprocess: Melspectrogram", unit="utterance"):
@@ -253,7 +255,7 @@ class VCTK_VCC2020Dataset(Dataset):
                 fmin=self.fbank_config["fmin"],
                 fmax=self.fbank_config["fmax"],
             )
-            np.save(self._get_path_mel(item_id), lmspc)
+            write_npy(self._get_path_mel(item_id), lmspc)
 
         # Statistics
         if self.split == "train":

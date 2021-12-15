@@ -230,6 +230,11 @@ def read_npy(p: Path):
     """Read .npy from path without `.npy`"""
     return np.load(p.with_suffix(".npy"))
 
+def write_npy(p: Path, d):
+    """Write .npy from path"""
+    p.parent.mkdir(exist_ok=True, parents=True)
+    np.save(p, d)
+
 ################################################################################
 
 # The following function are based on:
