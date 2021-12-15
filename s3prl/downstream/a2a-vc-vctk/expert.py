@@ -76,6 +76,7 @@ class DownstreamExpert(nn.Module):
         """
         Args:
             upstream_dim: Feature dimension size of upstream output
+            upstream_rate:
         """
         super(DownstreamExpert, self).__init__()
         
@@ -85,8 +86,8 @@ class DownstreamExpert(nn.Module):
         self.datarc = downstream_expert['datarc']
         self.modelrc = downstream_expert['modelrc']
         self.acoustic_feature_dim = self.datarc["fbank_config"]["n_mels"]
-        self.fs = self.datarc["fbank_config"]["fs"]
-        self.resample_ratio = self.fs / self.datarc["fbank_config"]["n_shift"] * upstream_rate / FS
+        _fs = self.datarc["fbank_config"]["fs"]
+        self.resample_ratio = _fs / self.datarc["fbank_config"]["n_shift"] * upstream_rate / FS
         print('[Downstream] - resample_ratio: ' + str(self.resample_ratio))
 
         # Load datasets
