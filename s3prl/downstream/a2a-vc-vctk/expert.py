@@ -239,7 +239,7 @@ class DownstreamExpert(nn.Module):
 
             for i, (tgt_spk, src_spk, uttr_name) in enumerate(tqdm(
                 records["vc_ids"],
-                dynamic_ncols=True, desc="Saving files"
+                dynamic_ncols=True, desc="Inference/Generate_waveform"
             )):
                 # No.i in a batch
                 length = int(records["feature_lengths"][i])
