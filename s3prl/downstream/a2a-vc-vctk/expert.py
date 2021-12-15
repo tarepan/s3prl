@@ -25,7 +25,7 @@ from torch.nn.utils.rnn import pad_sequence
 from .model import Model
 from .dataset import VCTK_VCC2020Dataset, Stat
 from .utils import make_non_pad_mask
-from .utils import read_hdf5, write_hdf5
+from .utils import write_hdf5
 from .utils import logmelspc_to_linearspc, griffin_lim
 
 FS = 16000
@@ -76,6 +76,7 @@ class DownstreamExpert(nn.Module):
         """
         Args:
             upstream_dim: Feature dimension size of upstream output
+            upstream_rate:
         """
         super(DownstreamExpert, self).__init__()
         
@@ -85,8 +86,8 @@ class DownstreamExpert(nn.Module):
         self.datarc = downstream_expert['datarc']
         self.modelrc = downstream_expert['modelrc']
         self.acoustic_feature_dim = self.datarc["fbank_config"]["n_mels"]
-        self.fs = self.datarc["fbank_config"]["fs"]
-        self.resample_ratio = self.fs / self.datarc["fbank_config"]["n_shift"] * upstream_rate / FS
+        _fs = self.datarc["fbank_config"]["fs"]
+        self.resample_ratio = _fs / self.datarc["fbank_config"]["n_shift"] * upstream_rate / FS
         print('[Downstream] - resample_ratio: ' + str(self.resample_ratio))
 
         # Load datasets
@@ -95,6 +96,7 @@ class DownstreamExpert(nn.Module):
         self.test_dataset = VCTK_VCC2020Dataset('test', **self.datarc)
 
         # Load dataset-wise statistics
+        # todo: Is this (AR normalization besed on only trainings, over speaker) good?
         self.stats = self.train_dataset.acquire_spec_stat()
 
         # define model and loss

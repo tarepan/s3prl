@@ -7,14 +7,15 @@
 """*********************************************************************************************"""
 
 
-import os
 import random
 from typing import List
 from pathlib import Path
 import pickle
 from dataclasses import dataclass
 
+from scipy.io import wavfile
 import librosa
+import soundfile as sf
 import numpy as np
 from tqdm import tqdm
 from speechcorpusy import load_preset
@@ -28,8 +29,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.dataset import Dataset
 
 from resemblyzer import preprocess_wav, VoiceEncoder
-from .utils import logmelspectrogram
-from .utils import read_hdf5, write_hdf5
+from .utils import logmelspectrogram, read_npy, write_npy
 
 
 # Hardcoded resampling rate for upstream
@@ -142,35 +142,27 @@ class VCTK_VCC2020Dataset(Dataset):
         self.fbank_config = fbank_config
         self._num_target = num_target
 
-        # Design Notes:
-        #   HDF5:
-        #     HDF5 is over-enginerring.
-        #     Currently it is used only for embeddings, and all embeddings are saved
-        #     in different .h5 files.
-        #     No dataset-wide access, no partial access.
-
-        # Get corpus
         corpus_name = corpus_train_dev if (split == 'train' or split == 'dev') else corpus_test
         self._corpus = load_preset(corpus_name, root=adress_data_root, download=download)
-
-        # Extract corpus contents
-        # This dataset do not save raw waves in dataset archive, so always need corpus contents.
-        self._corpus.get_contents()
 
         # Construct dataset adresses
         adress_archive, self._path_contents = dataset_adress(
             adress_data_root,
             self._corpus.__class__.__name__,
-            "emb",
-            f"{split}_hashed_args",
+            "wav_emb_mel_vctuple",
+            f"{split}_{num_dev_sample}forDev_{num_target}targets",
         )
-        self.get_path_emb = generate_path_getter("emb", self._path_contents)
+        self._get_path_wav = generate_path_getter("wav", self._path_contents)
+        self._get_path_emb = generate_path_getter("emb", self._path_contents)
+        self._get_path_mel = generate_path_getter("mel", self._path_contents)
         self._path_stats = self._path_contents / "stats.pkl"
 
         # Select data identities.
         all_utterances = self._corpus.get_identities()
         ## list of [content_source_utt, style_target_utt_1, style_target_utt_2, ...]
         self._vc_tuples: List[List[ItemId]] = []
+        ## list of content source, which will be preprocessed as resampled waveform
+        self._sources: List[ItemId] = []
         ## list of style target, which will be preprocessed as embedding
         self._targets: List[ItemId] = []
 
@@ -190,6 +182,7 @@ class VCTK_VCC2020Dataset(Dataset):
                 self._vc_tuples.extend(utts_spk[:2*idx_dev] if is_train else utts_spk[idx_dev:])
             random.seed(train_dev_seed)
             random.shuffle(self._vc_tuples)
+            self._sources = list(map(lambda vc_tuple: vc_tuple[0], self._vc_tuples))
             self._targets = list(map(lambda vc_tuple: vc_tuple[1], self._vc_tuples))
 
         elif split == 'test':
@@ -230,108 +223,28 @@ class VCTK_VCC2020Dataset(Dataset):
         """Generate dataset with corpus auto-download and preprocessing.
         """
 
+        self._corpus.get_contents()
+
+        # Waveform resampling for upstream input
+        # Low sampling rate is enough because waveforms are finally encoded into compressed feature.
+        for item_id in tqdm(self._sources, desc="Preprocess/Resampling", unit="utterance"):
+            wave, _ = librosa.load(self._corpus.get_item_path(item_id), sr=FS)
+            write_npy(self._get_path_wav(item_id), wave)
+
         # Embedding
         spk_encoder = VoiceEncoder()
-        for item_id in tqdm(self._targets, desc="Preprocessing", unit="utterance"):
-            self._extract_a_spk_emb(
-                self._corpus.get_item_path(item_id),
-                self.get_path_emb(item_id),
-                spk_encoder,
-            )
+        for item_id in tqdm(self._targets, desc="Preprocess/Embedding", unit="utterance"):
+            wav = preprocess_wav(self._corpus.get_item_path(item_id))
+            embedding = spk_encoder.embed_utterance(wav)
+            write_npy(self._get_path_emb(item_id), embedding.astype(np.float32))
 
-        # Statistics
-        if self.split == "train":
-            self._calculate_spec_stat()
-
-        # VC tuples
-        if self.split == "test":
-            # Generate vc tuples randomly
-            vc_tuples = generate_vc_tuples(self._sources, self._targets, self._num_target)
-            save_vc_tuples(self._path_contents, self._num_target, vc_tuples)
-
-    def _extract_a_spk_emb(self, wav_path, spk_emb_path, spk_encoder):
-        """Extract speaker embedding from an untterance."""
-        ## on-memory preprocessing
-        wav = preprocess_wav(wav_path)
-        embedding = spk_encoder.embed_utterance(wav)
-        # save spk emb
-        # spk_emb_path/(inHDF5)spk_emb
-        write_hdf5(str(spk_emb_path), "spk_emb", embedding.astype(np.float32))
-
-    def acquire_spec_stat(self):
-        """Acquire scaler, the statistics (mean and variance) of mel-spectrograms"""
-        with open(self._path_stats, "rb") as f:
-            scaler =  pickle.load(f)
-        return scaler
-
-    def _calculate_spec_stat(self):
-        """Calculate mean and variance of spectrograms."""
-        
-        # ※ Need high memory because extract all specs at once
-        # [(Time, MelFreq)]
-        lmspcs = self.get_all_lmspcs()
-
-        ## Calculate average
-        # ave::(MelFreq)
-        ave = np.zeros(lmspcs[0].shape[1])
-        L = 0
-        # spectrogram::(Time, MelFreq)
-        for spectrogram in lmspcs:
-            ave = np.add(ave, np.sum(spectrogram, axis=0))
-            L += spectrogram.shape[0]
-        ave = ave/L
-
-        ## Calculate sigma
-        # sigma::(MelFreq)
-        sigma = np.zeros(lmspcs[0].shape[1])
-        L = 0
-        # spectrogram::(Time, MelFreq)
-        for spectrogram in lmspcs:
-            sigma = np.add(sigma, np.sum(np.abs(spectrogram - ave), axis=0))
-            L += spectrogram.shape[0]
-        sigma = sigma/L
-
-        scaler = Stat(ave, sigma)
-
-        # Save
-        with open(self._path_stats, "wb") as f:
-            pickle.dump(scaler, f)
-
-    def _load_wav(self, wav_path, fs):
-        """Load wav file with resampling if needed
-
-        Args:
-            wav_path: Adress of waveform
-            fs: Sampling frequency
-        Returns:
-            (Time) Single-channel waveform
-        """
-        # use librosa to resample. librosa gives range [-1, 1]
-        # mono=True in default, so this is single-channel waveform
-        wav, sr = librosa.load(wav_path, sr=fs)
-        return wav, sr
-
-    def __len__(self):
-        """Number of .wav files (and same number of embeddings)"""
-        return len(self._vc_tuples)
-
-    def get_all_lmspcs(self):
-        """Acquire log-mel spectrograms from all waveforms.
-
-        Returns:
-            [(Time, MelFreq)] List of log-mel spectrogram
-        """
-
-        lmspcs = []
-        for xs in tqdm(self._vc_tuples, dynamic_ncols=True, desc="Extracting target acoustic features"):
-            # input_wav_path = 
-            input_wav_path = self._corpus.get_item_path(xs[0])
-            # (Time), (Time)
-            input_wav_original, fs_original = self._load_wav(input_wav_path, fs=None)
-            # (Time) => (Time, MelFreq)
+        # Mel-spectrogram
+        for item_id in tqdm(self._sources, desc="Preprocess/Melspectrogram", unit="utterance"):
+            # 'Not too downsampled' waveform for feature generation
+            wave, sr = librosa.load(self._corpus.get_item_path(item_id), sr=self.fbank_config["fs"])
             lmspc = logmelspectrogram(
-                x=input_wav_original,
-                fs=fs_original,
+                x=wave,
+                fs=sr,
                 n_mels=self.fbank_config["n_mels"],
                 n_fft=self.fbank_config["n_fft"],
                 n_shift=self.fbank_config["n_shift"],
@@ -340,50 +253,87 @@ class VCTK_VCC2020Dataset(Dataset):
                 fmin=self.fbank_config["fmin"],
                 fmax=self.fbank_config["fmax"],
             )
-            lmspcs.append(lmspc)
-        return lmspcs
-        
+            write_npy(self._get_path_mel(item_id), lmspc)
+
+        # Statistics
+        if self.split == "train":
+            self._calculate_spec_stat()
+            print("Preprocess/Stats (only in `train`) - done")
+
+        # VC tuples
+        if self.split == "test":
+            # Generate vc tuples randomly
+            vc_tuples = generate_vc_tuples(self._sources, self._targets, self._num_target)
+            save_vc_tuples(self._path_contents, self._num_target, vc_tuples)
+            print("Preprocess/VC_tuple (only in `test`) - done")
+
+    def acquire_spec_stat(self):
+        """Acquire scaler, the statistics (mean and variance) of mel-spectrograms"""
+        with open(self._path_stats, "rb") as f:
+            scaler =  pickle.load(f)
+        return scaler
+
+    def _calculate_spec_stat(self):
+        """Calculate mean and variance of source spectrograms."""
+
+        # Implementation Notes:
+        #   Dataset could be huge, so loading all spec could cause memory overflow.
+        #   For this reason, this implementation repeat 'load a spec and stack stats'.
+
+        # average spectrum over source utterances :: (MelFreq)
+        spec_stack = None
+        L = 0
+        for item_id in self._sources:
+            # lmspc::(Time, MelFreq)
+            lmspc = read_npy(self._get_path_mel(item_id))
+            uttr_sum = np.sum(lmspc, axis=0)
+            spec_stack = np.add(spec_stack, uttr_sum) if spec_stack is not None else uttr_sum
+            L += lmspc.shape[0]
+        ave = spec_stack/L
+
+        ## sigma in each frequency bin :: (MelFreq)
+        sigma_stack = None
+        L = 0
+        for item_id in self._sources:
+            # lmspc::(Time, MelFreq)
+            lmspc = read_npy(self._get_path_mel(item_id))
+            uttr_sigma_sum = np.sum(np.abs(lmspc - ave), axis=0)
+            sigma_stack = np.add(sigma_stack, uttr_sigma_sum) if sigma_stack is not None else uttr_sigma_sum
+            L += lmspc.shape[0]
+        sigma = sigma_stack/L
+
+        scaler = Stat(ave, sigma)
+
+        # Save
+        with open(self._path_stats, "wb") as f:
+            pickle.dump(scaler, f)
+
+    def __len__(self):
+        """Number of .wav files (and same number of embeddings)"""
+        return len(self._vc_tuples)
 
     def __getitem__(self, index):
-        """
-        Load raw waveform, resampled waveform and log-mel-spec in place (not preprocessed).
+        """Load waveforms, mel-specs, speaker embeddings and data identities.
 
         Returns:
             input_wav_resample (ndarray): Waveform used by Upstream (should be sr=FS)
-            lmspc: log-mel spectrogram
-            ref_spk_emb: Averaged self|target speaker embedding
+            lmspc (ndarray): log-mel spectrogram
+            ref_spk_emb: Averaged self|target speaker embeddings
             vc_identity (str, str, str): (target_speaker, source_speaker, utterance_name)
         """
 
         selected = self._vc_tuples[index]
         source_id = selected[0]
         target_ids = selected[1:]
-        input_wav_path = self._corpus.get_item_path(source_id)
-        spk_emb_paths = list(map(lambda item_id: self.get_path_emb(item_id), target_ids))
 
-        # FS: Target sampling rate (global variable)
-        input_wav_original, _ = self._load_wav(input_wav_path, fs=self.fbank_config["fs"])
-        input_wav_resample, fs_resample = self._load_wav(input_wav_path, fs=FS)
-
-        # ad-hoc spectrogram generation
-        lmspc = logmelspectrogram(
-            x=input_wav_original,
-            fs=self.fbank_config["fs"],
-            n_mels=self.fbank_config["n_mels"],
-            n_fft=self.fbank_config["n_fft"],
-            n_shift=self.fbank_config["n_shift"],
-            win_length=self.fbank_config["win_length"],
-            window=self.fbank_config["window"],
-            fmin=self.fbank_config["fmin"],
-            fmax=self.fbank_config["fmax"],
-        )
+        input_wav_resample = read_npy(self._get_path_wav(source_id))
+        lmspc              = read_npy(self._get_path_mel(source_id))
 
         # An averaged embedding of the speaker's N utterances
-        ref_spk_embs = [read_hdf5(spk_emb_path, "spk_emb") for spk_emb_path in spk_emb_paths]
-        ref_spk_embs = np.stack(ref_spk_embs, axis=0)
-        ref_spk_emb = np.mean(ref_spk_embs, axis=0)
+        ref_spk_embs = [read_npy(self._get_path_emb(item_id)) for item_id in target_ids]
+        ref_spk_emb = np.mean(np.stack(ref_spk_embs, axis=0), axis=0)
 
-        # VC identity (target_speaker, source_speaker, utterance_name)
+        # VC identity (target_speaker,        source_speaker,    utterance_name)
         vc_identity = (target_ids[0].speaker, source_id.speaker, source_id.name)
 
         return input_wav_resample, lmspc, ref_spk_emb, vc_identity
