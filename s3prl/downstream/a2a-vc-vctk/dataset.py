@@ -150,7 +150,7 @@ class VCTK_VCC2020Dataset(Dataset):
             adress_data_root,
             self._corpus.__class__.__name__,
             "emb",
-            f"{split}_hashed_args",
+            f"{split}_{num_dev_sample}forDev_{num_target}targets",
         )
         self._get_path_wav = generate_path_getter("wav", self._path_contents)
         self._get_path_emb = generate_path_getter("emb", self._path_contents)
