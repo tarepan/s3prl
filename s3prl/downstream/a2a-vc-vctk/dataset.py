@@ -227,7 +227,7 @@ class VCTK_VCC2020Dataset(Dataset):
 
         # Waveform resampling for upstream input
         # Low sampling rate is enough because waveforms are finally encoded into compressed feature.
-        for item_id in tqdm(self._sources, desc="Preprocess: Resampling", unit="utterance"):
+        for item_id in tqdm(self._sources, desc="Preprocess/Resampling", unit="utterance"):
             wave, _ = librosa.load(self._corpus.get_item_path(item_id), sr=FS)
             p = self._get_path_wav(item_id)
             p.parent.mkdir(exist_ok=True, parents=True)
@@ -235,13 +235,13 @@ class VCTK_VCC2020Dataset(Dataset):
 
         # Embedding
         spk_encoder = VoiceEncoder()
-        for item_id in tqdm(self._targets, desc="Preprocess: Embedding", unit="utterance"):
+        for item_id in tqdm(self._targets, desc="Preprocess/Embedding", unit="utterance"):
             wav = preprocess_wav(self._corpus.get_item_path(item_id))
             embedding = spk_encoder.embed_utterance(wav)
             write_npy(self._get_path_emb(item_id), embedding.astype(np.float32))
 
         # Mel-spectrogram
-        for item_id in tqdm(self._sources, desc="Preprocess: Melspectrogram", unit="utterance"):
+        for item_id in tqdm(self._sources, desc="Preprocess/Melspectrogram", unit="utterance"):
             # 'Not too downsampled' waveform for feature generation
             wave, sr = librosa.load(self._corpus.get_item_path(item_id), sr=self.fbank_config["fs"])
             lmspc = logmelspectrogram(
@@ -260,12 +260,14 @@ class VCTK_VCC2020Dataset(Dataset):
         # Statistics
         if self.split == "train":
             self._calculate_spec_stat()
+            print("Preprocess/Stats (only in `train`) - done")
 
         # VC tuples
         if self.split == "test":
             # Generate vc tuples randomly
             vc_tuples = generate_vc_tuples(self._sources, self._targets, self._num_target)
             save_vc_tuples(self._path_contents, self._num_target, vc_tuples)
+            print("Preprocess/VC_tuple (only in `test`) - done")
 
     def acquire_spec_stat(self):
         """Acquire scaler, the statistics (mean and variance) of mel-spectrograms"""
