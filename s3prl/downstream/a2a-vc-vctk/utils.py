@@ -228,7 +228,8 @@ def make_non_pad_mask(lengths, xs=None, length_dim=-1):
 
 def read_npy(p: Path):
     """Read .npy from path without `.npy`"""
-    return np.load(p.with_suffix(".npy"))
+    # Change file name by appending `.npy` at tail.
+    return np.load(p.with_name(f"{p.name}.npy"))
 
 def write_npy(p: Path, d):
     """Write .npy from path"""
