@@ -149,7 +149,7 @@ class VCTK_VCC2020Dataset(Dataset):
         adress_archive, self._path_contents = dataset_adress(
             adress_data_root,
             self._corpus.__class__.__name__,
-            "emb",
+            "wav_emb_mel_vctuple",
             f"{split}_{num_dev_sample}forDev_{num_target}targets",
         )
         self._get_path_wav = generate_path_getter("wav", self._path_contents)
