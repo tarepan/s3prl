@@ -34,6 +34,8 @@ class UpstreamExpert(UpstreamBase):
     def __init__(self, ckpt, **kwargs):
         super().__init__(**kwargs)
 
+        print("Upstream model: wav2vec 2.0 Q")
+
         # Validation: Fairseq version
         assert version.parse(fairseq.__version__) > version.parse(
             "0.10.2"
