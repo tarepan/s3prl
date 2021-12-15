@@ -229,9 +229,7 @@ class VCTK_VCC2020Dataset(Dataset):
         # Low sampling rate is enough because waveforms are finally encoded into compressed feature.
         for item_id in tqdm(self._sources, desc="Preprocess/Resampling", unit="utterance"):
             wave, _ = librosa.load(self._corpus.get_item_path(item_id), sr=FS)
-            p = self._get_path_wav(item_id)
-            p.parent.mkdir(exist_ok=True, parents=True)
-            sf.write(p, wave, FS, format="WAV")
+            write_npy(self._get_path_wav(item_id), wave)
 
         # Embedding
         spk_encoder = VoiceEncoder()
@@ -328,10 +326,8 @@ class VCTK_VCC2020Dataset(Dataset):
         source_id = selected[0]
         target_ids = selected[1:]
 
-        # Preprocessing is done w/ `librosa`, so no worry of details (mono, bit-depth, etc).
-        _, input_wav_resample = wavfile.read(self._get_path_wav(source_id))
-
-        lmspc = read_npy(self._get_path_mel(source_id))
+        input_wav_resample = read_npy(self._get_path_wav(source_id))
+        lmspc              = read_npy(self._get_path_mel(source_id))
 
         # An averaged embedding of the speaker's N utterances
         ref_spk_embs = [read_npy(self._get_path_emb(item_id)) for item_id in target_ids]
