@@ -7,6 +7,7 @@
 """*********************************************************************************************"""
 
 
+from pathlib import Path
 import fnmatch
 import h5py
 import librosa
