@@ -6,6 +6,9 @@
 #   Copyright    [ Copyleft(c), Speech Lab, NTU, Taiwan ]
 """*********************************************************************************************"""
 
+# Models
+#   - `wav2vec` (==`wav2vec_large`)
+#   - `wav2vec_large`
 
 import os
 

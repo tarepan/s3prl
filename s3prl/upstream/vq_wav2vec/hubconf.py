@@ -6,6 +6,11 @@
 #   Copyright    [ Copyleft(c), Speech Lab, NTU, Taiwan ]
 """*********************************************************************************************"""
 
+# Models
+#   - `vq_wav2vec` (==`vq_wav2vec_gumbel`)
+#   - `vq_wav2vec_gumbel`
+#   - `vq_wav2vec_kmeans`
+
 
 import os
 #-------------#
@@ -19,6 +24,7 @@ def vq_wav2vec_local(ckpt, *args, **kwargs):
             ckpt (str): PATH
     """
     assert os.path.isfile(ckpt)
+    # == `UpstreamExpert` of `wav2vec.expert`
     return _UpstreamExpert(ckpt, *args, **kwargs)
 
 

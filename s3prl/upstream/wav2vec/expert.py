@@ -25,8 +25,7 @@ EXAMPLE_SEC = 5
 
 
 class UpstreamExpert(UpstreamBase):
-    """
-    The wav2vec wrapper
+    """The Wrapper of `wav2vec` and `vq_wav2vec`.
     """
 
     def __init__(self, ckpt, **kwargs):
