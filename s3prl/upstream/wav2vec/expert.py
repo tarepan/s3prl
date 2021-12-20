@@ -30,19 +30,25 @@ class UpstreamExpert(UpstreamBase):
 
     def __init__(self, ckpt, **kwargs):
         super().__init__(**kwargs)
+
+        # Load model 
+        cp = torch.load(ckpt)
+        args = cp["args"]
         if version.parse(fairseq.__version__) > version.parse("0.10.2"):
-            cp = torch.load(ckpt)
-            args = cp["args"]
             base_wav2vec_architecture(args)
-            self.model = Wav2VecModel.build_model(args, task=None)
-            self.model.load_state_dict(cp["model"])
         elif version.parse(fairseq.__version__) == version.parse("0.10.2"):
-            cp = torch.load(ckpt)
-            self.model = Wav2VecModel.build_model(cp["args"], task=None)
-            self.model.load_state_dict(cp["model"])
+            pass
         else:
             raise NotImplementedError
+        self.model = Wav2VecModel.build_model(args, task=None)
+        self.model.load_state_dict(cp["model"])
 
+        # Hook to forwards
+        #   - model.feature_extractor
+        #   - model.feature_aggregator
+        #   - model.feature_aggregator.conv_layers[0]
+        #   - model.feature_aggregator.conv_layers[1]
+        #   - ...
         if len(self.hooks) == 0:
             self.add_hook(
                 "self.model.feature_extractor",
@@ -65,22 +71,35 @@ class UpstreamExpert(UpstreamBase):
     def forward(self, wavs):
         """
         Code snippet modified from fairseq
+        {
+            "z": Output of `model.feature_extractor`
+            "codewords" Optional[(B, T, vq_dim)]: Discretized representative vector series
+            "codeids" Optional[(B, T, G)]: Discretized code group series
+            "c": Context, output of `model.feature_aggregator`
+            "default": == "c"
+        }
         """
         result = {}
 
         padded_wav = pad_sequence(wavs, batch_first=True)
+
+        # Encoding
         features = self.model.feature_extractor(padded_wav)
         result["z"] = features.transpose(1, 2).contiguous()
 
+        # Quantization, features is overridden
         if self.model.vector_quantizer:
             q_res = self.model.vector_quantizer(features, produce_targets=True)
+            # "x" (B, T, vq_dim==G*var_dim): Sampled representative vector series
+            #   ※ dim 1 and 2 could be reversed based on `time_first` param of vq model
             result["codewords"] = q_res["x"].transpose(1, 2).contiguous()
+            # "targets" (B, T, G): Index vector series for training targets
             result["codeids"] = q_res["targets"]
             features = q_res["x"]
 
+        # Projection to context
         x = self.model.dropout_feats(features)
         x = self.model.feature_aggregator(x)
-
         result["c"] = x.transpose(1, 2).contiguous()
         result["default"] = result["c"]
 
@@ -89,6 +108,7 @@ class UpstreamExpert(UpstreamBase):
 
 
 def base_wav2vec_architecture(args):
+    """Modify `args`"""
     conv_feature_layers = "[(512, 10, 5)]"
     conv_feature_layers += " + [(512, 8, 4)]"
     conv_feature_layers += " + [(512, 4, 2)] * 3"
