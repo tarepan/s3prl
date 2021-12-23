@@ -311,8 +311,11 @@ class Runner():
                     else:
                         with torch.no_grad():
                             features = self.upstream.model(wavs)
+
+                    # Forward/Featurizer
                     features = self.featurizer.model(wavs, features)
 
+                    # (Forward/SpecArg)
                     if specaug:
                         features, _ = specaug(features)
 
