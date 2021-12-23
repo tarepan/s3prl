@@ -192,6 +192,10 @@ class UpstreamBase(nn.Module, metaclass=initHook):
 
 
 class Featurizer(nn.Module):
+    """Learnable and weighted feature selector"""
+
+    name: str = "Featurizer"
+
     def __init__(
         self,
         upstream: UpstreamBase,
@@ -200,15 +204,28 @@ class Featurizer(nn.Module):
         layer_selection: int = None,
         **kwargs,
     ):
-        super().__init__()
-        self.name = "Featurizer"
+        """Register and calculate parameters.
 
+        Args:
+            upstream - Upstream model for processing fake features
+            feature_selection - Name of selected feature
+            upstream_device - Device on which upstream model work
+            layer_selection - Index of selected layer in select feature
+        """
+
+        super().__init__()
+
+        # Setup upstream model
         upstream.eval()
+
+        # Generate fake features
         paired_wavs = [torch.randn(SAMPLE_RATE).to(upstream_device)]
         with torch.no_grad():
             paired_features = upstream(paired_wavs)
 
+        # Check selection keys
         if feature_selection not in paired_features:
+            # default "hidden_states"
             if "hidden_states" in paired_features:
                 show(
                     f"[{self.name}] - Warning: {feature_selection} is not a supported args.upstream_feature_selection."
@@ -216,6 +233,7 @@ class Featurizer(nn.Module):
                     file=sys.stderr
                 )
                 feature_selection = "hidden_states"
+            # Assertion
             else:
                 show(
                     f"[{self.name}] - Error: {feature_selection} is not a supported args.upstream_feature_selection."
@@ -227,6 +245,7 @@ class Featurizer(nn.Module):
         self.feature_selection = feature_selection
         self.layer_selection = layer_selection
 
+        # Setup a selector by selection of fake features
         feature = self._select_feature(paired_features)
         if isinstance(feature, (list, tuple)):
             self.layer_num = len(feature)
@@ -239,6 +258,7 @@ class Featurizer(nn.Module):
         else:
             feature = feature.cpu()
 
+        # Setup output metadata (feature dimension & downsampling rate)
         self.output_dim = feature.size(-1)
         if hasattr(upstream, "get_downsample_rates"):
             self.downsample_rate = upstream.get_downsample_rates(feature_selection)
@@ -257,6 +277,7 @@ class Featurizer(nn.Module):
             )
 
     def _select_feature(self, features):
+        """Select feature from features."""
         feature = features.get(self.feature_selection)
 
         if isinstance(feature, dict):
@@ -271,6 +292,7 @@ class Featurizer(nn.Module):
         return feature
 
     def _weighted_sum(self, feature):
+        """Sum selected features with weights."""
         assert self.layer_num == len(feature), (
             "If you run into this error, there is a great chance"
             " you are finetuning the upstream with wav2vec2's transformer blocks"
@@ -298,10 +320,20 @@ class Featurizer(nn.Module):
 
         return weighted_feature
 
-    def tolist(self, paired_wavs: List[Tensor], paired_feature: Tensor):
+    def tolist(self, paired_wavs: List[Tensor], paired_feature: Tensor) -> List[Tensor]:
+        """Convert batched feature tensor into list of non-padded features.
+
+        Args:
+            paired_wavs:
+            paired_feature: A tensor representating a batch of feature (not list)
+        Returns:
+            List of feature series
+        """
+        # (Batch, Time, Feat)
         assert paired_feature.dim() == 3, "(batch_size, max_seq_len, feat_dim)"
         feature_len = [round(len(wav) / self.downsample_rate) for wav in paired_wavs]
         assert abs(paired_feature.size(1) - round(max([len(wav) for wav in paired_wavs]) / self.downsample_rate)) < TOLERABLE_SEQLEN_DIFF
+        # [paired_feature[0, :feature_len[0]], paired_feature[1, :feature_len[1]], ...]
         feature = [f[:l] for f, l in zip(paired_feature, feature_len)]
         return feature
 
@@ -310,6 +342,14 @@ class Featurizer(nn.Module):
         paired_wavs: List[Tensor],
         paired_features: Dict[str, Union[Tensor, List[Tensor], Dict[str, Tensor]]],
     ):
+        """Select features and average them w/ learnable weights.
+
+        Args:
+            paired_wavs: Waveforms from which the features generated, for length information retrieval
+            paired_features: Features to be selected
+        Returns:
+            Selected features
+        """
         feature = self._select_feature(paired_features)
         if isinstance(feature, (list, tuple)):
             feature = self._weighted_sum(feature)

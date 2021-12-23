@@ -112,6 +112,7 @@ class Runner():
         for interface in interfaces or []:
             assert hasattr(model, interface), interface
 
+        # Load model states from checkpoint specified by the name
         self._load_weight(model, name)
 
         if is_initialized() and trainable and any((p.requires_grad for p in model.parameters())):
