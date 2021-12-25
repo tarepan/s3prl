@@ -26,6 +26,23 @@ EXAMPLE_SEC = 5
 
 class UpstreamExpert(UpstreamBase):
     """The Wrapper of `wav2vec` and `vq_wav2vec`.
+
+    In default `vq_wav2vec`, result dictionary is
+    ```
+    {
+        'z',
+        'codewords'         :: (Batch, Time, vq_dim=512),
+        'codeids'           :: (Batch, Time, G=2),
+        'c'                 :: (Batch, Time, FeatC=vq_dim=512),
+        'default'           :: (Batch, Time, FeatC=vq_dim=512),
+        '_hidden_states_info',
+        'hidden_states'     :: [extractor, aggregator_conv_1, agg_conv_2, ..., agg_conv_11, aggregator],
+        'last_hidden_state' :: (Batch, Time, FeatC=vq_dim=512),
+        'hidden_state_0'    :: (Batch, Time, FeatC=vq_dim=512),
+        ...,
+        'hidden_state_12'   :: (Batch, Time, FeatC=vq_dim=512),
+    }
+    ```
     """
 
     def __init__(self, ckpt, **kwargs):
