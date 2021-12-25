@@ -196,7 +196,9 @@ class Runner():
 
 
     def _get_downstream(self):
+        # Dynamic import of the downstream
         Downstream = getattr(downstream.experts, self.args.downstream)
+        # Input metadata from Featurizer's output metadata
         model = Downstream(
             upstream_dim = self.featurizer.model.output_dim,
             upstream_rate = self.featurizer.model.downsample_rate,
