@@ -44,7 +44,7 @@ requirements = [
     "easydict",
     "catalyst",
     "sentencepiece",
-    "huggingface_hub @ git+https://github.com/huggingface/huggingface_hub.git#egg=huggingface_hub" # TODO: Replace with v0.0.17 when it is released
+    "huggingface_hub",
 ]
 
 # Arguments marked as "Required" below must be included for upload to PyPI.
