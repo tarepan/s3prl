@@ -161,9 +161,9 @@ class VCTK_VCC2020Dataset(Dataset):
         all_utterances = self._corpus.get_identities()
         ## list of [content_source_utt, style_target_utt_1, style_target_utt_2, ...]
         self._vc_tuples: List[List[ItemId]] = []
-        ## list of content source, which will be preprocessed as resampled waveform
+        ## Utterance list of content source, which will be preprocessed as resampled waveform
         self._sources: List[ItemId] = []
-        ## list of style target, which will be preprocessed as embedding
+        ## Utterance list of style target, which will be preprocessed as embedding
         self._targets: List[ItemId] = []
 
         if split == 'train' or split == 'dev':
@@ -186,6 +186,7 @@ class VCTK_VCC2020Dataset(Dataset):
             self._targets = list(map(lambda vc_tuple: vc_tuple[1], self._vc_tuples))
 
         elif split == 'test':
+            # Outputs: `self._sources` & `self._targets`
             # target is other speaker, source:target = 1:N
             if corpus_name == "VCC20":
                 # Missing utterances in original code: E10001-E10050 (c.f. tarepan/s3prl#2)
@@ -200,6 +201,9 @@ class VCTK_VCC2020Dataset(Dataset):
                     self._sources.extend(utts_spk[:10])
                 # All test utterances are target style
                 self._targets = all_utterances
+            elif corpus_name == "AdHoc":
+                self._sources = list(filter(lambda item_id: item_id.subtype == "s", all_utterances))
+                self._targets = list(filter(lambda item_id: item_id.subtype == "t", all_utterances))
             else:
                 Exception(f"Corpus '{corpus_name}' is not yet supported for test split")
 
