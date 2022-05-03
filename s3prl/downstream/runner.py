@@ -404,7 +404,9 @@ class Runner():
                     check_ckpt_num(self.args.expdir)
                     save_names.append(f'states-{global_step}.ckpt')
 
+                # Execute checkpointing
                 if len(save_names) > 0:
+                    # all_states: Top level container for checkpointing
                     all_states = {
                         'Optimizer': optimizer.state_dict(),
                         'Step': global_step,
@@ -413,8 +415,10 @@ class Runner():
                         'Config': self.config,
                     }
 
+                    # self.all_entries == [self.upstream, self.featurizer, self.downstream]
                     for entry in self.all_entries:
                         if entry.trainable:
+                            # Extract state_dict
                             all_states[entry.name] = get_model_state(entry.model)
 
                     if scheduler:
