@@ -50,8 +50,6 @@ downstream_expert:
   modelrc:
     spk_emb_integration_type: concat # add or concat
     spk_emb_dim: 256
-    ar: True
-    encoder_type: "taco2"
     hidden_dim: 1024
     prenet_layers: 2  # if set 0, no prenet is used
     prenet_dim: 256
