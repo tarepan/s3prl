@@ -8,10 +8,11 @@
 #   Copyright    [ Copyright(c), Toda Lab, Nagoya University, Japan ]
 """*********************************************************************************************"""
 
-
 """Basically same with A2O model, but embedding is added. 'Added for A2A' are annotation of the differences."""
 
+
 from warnings import warn
+from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
@@ -19,198 +20,10 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 from extorch import Conv1dEx
 
-
-################################################################################
-
-# The follow section is related to Tacotron2
-# Reference: https://github.com/espnet/espnet/blob/master/espnet/nets/pytorch_backend/tacotron2
-
-def encoder_init(m):
-    """Initialize encoder parameters."""
-    if isinstance(m, torch.nn.Conv1d):
-        torch.nn.init.xavier_uniform_(m.weight, torch.nn.init.calculate_gain("relu"))
-
-class Taco2Encoder(torch.nn.Module):
-    """Encoder module of the Tacotron2 TTS model.
-
-    Model: segFC[-(Res(Conv1d[-BN]-ReLU-DO))xN][-MbiLSTM]
-    Variants are switched by arguments.
-
-    Reference:
-    _`Natural TTS Synthesis by Conditioning WaveNet on Mel Spectrogram Predictions`_
-       https://arxiv.org/abs/1712.05884
-
-    """
-
-    def __init__(
-        self,
-        idim: int,
-        elayers: int = 1,
-        eunits: int = 512,
-        econv_layers: int = 3,
-        econv_chans: int = 512,
-        econv_filts: int = 5,
-        use_batch_norm: bool = True,
-        use_residual: bool = False,
-        dropout_rate: float = 0.5,
-        bidirectional: bool = True,
-        causal: bool = False,
-    ):
-        """Initialize Tacotron2 encoder module.
-
-        By default, model is segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1biLSTM512
-        Args:
-            idim: Dimension of the inputs.
-            elayers: The number of encoder LSTM layers.
-            eunits:  The number of encoder LSTM units.
-            econv_layers: The number of encoder conv layers.
-            econv_filts:  The number of encoder conv filter size.
-            econv_chans:  The number of encoder conv filter channels.
-            use_batch_norm: Whether to use batch normalization.
-            use_residual: Whether to use residual connection.
-            dropout_rate: Dropout rate.
-            bidirectional: Whether LSTM is bidirectional or not.
-            causal: Whether Conv1d is causal or not.
-        """
-        super(Taco2Encoder, self).__init__()
-        # store the hyperparameters
-        self.idim = idim
-        self.use_residual = use_residual
-
-        # segFC linear
-        self.input_layer = torch.nn.Linear(idim, econv_chans)
-
-        # convs: [(Conv1d[-BN]-ReLU-DO)xN]
-        if econv_layers > 0:
-            self.convs = torch.nn.ModuleList()
-            for layer in range(econv_layers):
-                ichans = econv_chans
-                # BN on/off, remaining is totally same
-                ## BN (+)
-                if use_batch_norm:
-                    self.convs += [
-                        torch.nn.Sequential(
-                            Conv1dEx(
-                                ichans,
-                                econv_chans,
-                                econv_filts,
-                                stride=1,
-                                padding=(econv_filts - 1) // 2,
-                                bias=False,
-                                causal=causal,
-                            ),
-                            torch.nn.BatchNorm1d(econv_chans),
-                            torch.nn.ReLU(),
-                            torch.nn.Dropout(dropout_rate),
-                        )
-                    ]
-                ## BN (-)
-                else:
-                    self.convs += [
-                        torch.nn.Sequential(
-                            Conv1dEx(
-                                ichans,
-                                econv_chans,
-                                econv_filts,
-                                stride=1,
-                                padding=(econv_filts - 1) // 2,
-                                bias=False,
-                                causal=causal,
-                            ),
-                            torch.nn.ReLU(),
-                            torch.nn.Dropout(dropout_rate),
-                        )
-                    ]
-        else:
-            self.convs = None
-
-        # blstm: [N-LSTM]
-        if elayers > 0:
-            iunits = econv_chans if econv_layers != 0 else embed_dim
-            dim_lstm = eunits // 2 if bidirectional else eunits
-            self.blstm = torch.nn.LSTM(
-                iunits, dim_lstm, elayers, batch_first=True, bidirectional=bidirectional
-            )
-            print(f"Encoder LSTM: {'bidi' if bidirectional else 'uni'}")
-        else:
-            self.blstm = None
-
-        # initialize
-        self.apply(encoder_init)
-
-    def forward(self, xs, ilens=None):
-        """Calculate forward propagation.
-        Args:
-            xs (Batch, T_max, Feature_o): padded acoustic feature sequence
-        """
-
-        # segFC linear
-        xs = self.input_layer(xs).transpose(1, 2)
-
-        # Conv
-        if self.convs is not None:
-            for i in range(len(self.convs)):
-                if self.use_residual:
-                    xs += self.convs[i](xs)
-                else:
-                    xs = self.convs[i](xs)
-
-        # LSTM
-        if self.blstm is None:
-            return xs.transpose(1, 2)
-        if not isinstance(ilens, torch.Tensor):
-            ilens = torch.tensor(ilens)
-        xs = pack_padded_sequence(xs.transpose(1, 2), ilens.cpu(), batch_first=True)
-        self.blstm.flatten_parameters()
-        xs, _ = self.blstm(xs)  # (B, Lmax, C)
-        xs, hlens = pad_packed_sequence(xs, batch_first=True)
-
-        return xs, hlens
-
-class Taco2Prenet(torch.nn.Module):
-    """Prenet module for decoder of Tacotron2.
-
-    Model: (FC-ReLU-DO)xN | DO
-    Variants are switched by arguments.
-
-    The Prenet preforms nonlinear conversion
-    of inputs before input to auto-regressive lstm,
-    which helps alleviate the exposure bias problem.
-
-    Note:
-        This module alway applies dropout even in evaluation.
-        See the detail in `Natural TTS Synthesis by
-        Conditioning WaveNet on Mel Spectrogram Predictions`_.
-
-    _`Natural TTS Synthesis by Conditioning WaveNet on Mel Spectrogram Predictions`_
-       https://arxiv.org/abs/1712.05884
-
-    """
-
-    def __init__(self, idim, n_layers:int=2, n_units:int=256, dropout_rate:float=0.5):
-        """
-        By default, model is (FC256-ReLU-DO_0.5)x2
-        """
-        super(Taco2Prenet, self).__init__()
-        self.dropout_rate = dropout_rate
-        self.prenet = torch.nn.ModuleList()
-        for layer in range(n_layers):
-            n_inputs = idim if layer == 0 else n_units
-            self.prenet += [
-                # FC-ReLU
-                torch.nn.Sequential(torch.nn.Linear(n_inputs, n_units), torch.nn.ReLU())
-            ]
-
-    def forward(self, x):
-        # Make sure at least one dropout is applied.
-        if len(self.prenet) == 0:
-            return F.dropout(x, self.dropout_rate)
-
-        for i in range(len(self.prenet)):
-            x = F.dropout(self.prenet[i](x), self.dropout_rate)
-        return x
-
-################################################################################
+from .dataset import Stat
+from .networks.encoder import Taco2Encoder, ConfEncoder
+from .networks.conditioning import GlobalCondNet, ConfGlobalCondNet
+from .networks.decoder import Taco2Prenet, ConfDecoderPreNet
 
 class RNNLayer(nn.Module):
     ''' RNN wrapper, includes time-downsampling
@@ -326,6 +139,31 @@ class RNNCell(nn.Module):
 
 ################################################################################
 
+class ConfModel:
+    """Configuration of Model"""
+    input_dim: int,        # Dimension size of input feature
+    output_dim: int,       # Dimension size of output mel-spectrum
+    hidden_dim: int,
+    resample_ratio: float, # Time-directional up/down sampling ratio toward input series
+    # Encoder
+    encoder_type: str,     # "taco2" | "ffn"
+    enc_bidi: bool,        # Whether to use bidirectional
+    enc_conv_causal: bool, # Whether to use causal convolution
+    # Decoder
+    ## PreNet
+    prenet_layers: int,         # Number of layers
+    prenet_dim: int,            # Number of each layer's dimension
+    prenet_dropout_rate: float, # Dropout rate
+    ## MainNet
+    ar: bool,                  # Whether teacher-forcing or not
+    lstmp_layers: int,         # Number of layers
+    lstmp_dropout_rate: float, # Dropout rate
+    lstmp_layernorm: bool,     # Whether to use LayerNorm
+    stats: Stat,               # Spectrum normalization stats
+    # 'Added for A2A'
+    spk_emb_integration_type: str, # "add" | "concat"
+    spk_emb_dim: int,              # Number of embedding dimension
+
 class Model(nn.Module):
     """
     S3PRL-VC model.
@@ -368,24 +206,17 @@ class Model(nn.Module):
         self.hidden_dim = hidden_dim # this is also the decoder output dim
         self.output_dim = output_dim # acoustic feature dim
         self.resample_ratio = resample_ratio
-        # 'Added for A2A'
-        self.spk_emb_integration_type = spk_emb_integration_type
-        self.spk_emb_dim = spk_emb_dim
-        if spk_emb_integration_type == "add":
-            assert spk_emb_dim == hidden_dim
-        # /
-
-        # Normalization parameters
-        self.register_buffer("target_mean", torch.from_numpy(stats.mean_).float())
-        self.register_buffer("target_scale", torch.from_numpy(stats.scale_).float())
 
         # Encoder
         ## `Taco2-AR`: segFC-Conv-biLSTM
         if encoder_type == "taco2":
             # model: segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1LSTM`h`, `h` stand for `hidden_dim`
-            self.encoder = Taco2Encoder(input_dim, eunits=hidden_dim, bidirectional=enc_bidi, causal=enc_conv_causal)
+            self.encoder = Taco2Encoder(
+                ConfEncoder(
+                    input_dim, eunits=hidden_dim, bidirectional=enc_bidi, causal=enc_conv_causal
+            ))
+        ## `simple` | `simple-AR`: segFC-ReLU
         elif encoder_type == "ffn":
-            ## `simple` | `simple-AR`: segFC-ReLU
             self.encoder = torch.nn.Sequential(
                 torch.nn.Linear(input_dim, hidden_dim),
                 torch.nn.ReLU()
@@ -393,26 +224,23 @@ class Model(nn.Module):
         else:
             raise ValueError("Encoder type not supported.")
 
-        # 'Added for A2A'
-        # define projection layer
-        if self.spk_emb_integration_type == "add":
-            dim_i_proj = spk_emb_dim
-        elif self.spk_emb_integration_type == "concat":
-            dim_i_proj = hidden_dim + spk_emb_dim
-        else:
-            raise ValueError("Integration type not supported.")
-        self.spk_emb_projection = torch.nn.Linear(dim_i_proj, hidden_dim)
-        # /
-
-        # Decoder
-        ## PreNet, `Taco2-AR` only: (segFC-ReLU-DO)xN
-        self.prenet = Taco2Prenet(
-            idim=output_dim,
-            n_layers=prenet_layers,
-            n_units=prenet_dim,
-            dropout_rate=prenet_dropout_rate,
+        # Speaker conditioning
+        self.cond_net = GlobalCondNet(
+            ConfGlobalCondNet(spk_emb_integration_type, hidden_dim, spk_emb_dim)
         )
 
+        # Decoder
+        ## Normalization
+        self.register_buffer("target_mean", torch.from_numpy(stats.mean_).float())
+        self.register_buffer("target_scale", torch.from_numpy(stats.scale_).float())
+        ## PreNet, `Taco2-AR` only: (segFC-ReLU-DO)xN
+        self.prenet = Taco2Prenet(
+            ConfDecoderPreNet(
+                idim=output_dim,
+                n_layers=prenet_layers,
+                n_units=prenet_dim,
+                dropout_rate=prenet_dropout_rate,
+        ))
         ## MainNet: LSTMP + linear projection
         ### lstmps: (1uniLSTM[-LN][-DO]-segFC-Tanh)xN
         self.lstmps = nn.ModuleList()
@@ -443,46 +271,20 @@ class Model(nn.Module):
             self.lstmps.append(rnn_layer)
         ### Projection: segFC
         self.proj = torch.nn.Linear(hidden_dim, output_dim)
-
         ## PostNet: None
         pass
 
     def normalize(self, x):
+        """Normalize spectrum for AR"""
         return (x - self.target_mean) / self.target_scale
     
-    # 'Added for A2A'
-    def _integrate_with_spk_emb(self, hs, spembs):
-        """Integrate speaker embedding with hidden states.
-
-        Args:
-            hs (Batch, T_max, hdim): hidden state sequences
-            spembs (Batch, spk_embed_dim): speaker embeddings
-        Returns:
-            Integrated feature sequence
-        """
-
-        if self.spk_emb_integration_type == "add":
-            # apply projection and then add to hidden states
-            spembs = self.spk_emb_projection(F.normalize(spembs))
-            hs = hs + spembs.unsqueeze(1)
-        elif self.spk_emb_integration_type == "concat":
-            # concat hidden states with spk embeds and then apply projection
-            spembs = F.normalize(spembs).unsqueeze(1).expand(-1, hs.size(1), -1)
-            hs = self.spk_emb_projection(torch.cat([hs, spembs], dim=-1))
-        else:
-            raise NotImplementedError("support only add or concat.")
-
-        return hs
-    # /
-
-    # 'Added for A2A': `ref_spk_embs` /
-    def forward(self, features, lens, ref_spk_embs, targets = None):
+    def forward(self, features, lens, spk_emb, targets = None):
         """Convert unit sequence into acoustic feature sequence.
 
         Args:
             features (Batch, T_max, Feature_i): input unit sequences
             lens
-            ref_spk_embs (Batch, Spk_emb): reference (self/target) speaker embeddings sequences
+            spk_emb (Batch, Spk_emb): speaker embedding vectors as global conditioning
             targets (Batch, T_max, Feature_o): padded target acoustic feature sequences
         """
         B = features.shape[0]
@@ -502,12 +304,10 @@ class Model(nn.Module):
         elif self.encoder_type == "ffn":
             encoder_states = self.encoder(resampled_features)
 
-        # 'Added for A2A'
-        # inject speaker embeddings
-        encoder_states = self._integrate_with_spk_emb(encoder_states, ref_spk_embs)
-        # /
+        # Global speaker conditioning
+        encoder_states = self.cond_net(encoder_states, spk_emb)
 
-        # Decoder
+        # Decoder: spec_t' = f(spec_t, cond_t), cond_t == f(unit_t, spk_g)
         # AR decofing w/ or w/o teacher-forcing
         if self.ar:
             # Transpose for easy access: (B, T_max, Feat_o) => (T_max, B, Feat_o)
