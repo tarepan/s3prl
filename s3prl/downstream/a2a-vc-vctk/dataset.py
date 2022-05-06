@@ -246,6 +246,7 @@ class VCTK_VCC2020Dataset(Dataset):
         for item_id in tqdm(self._sources, desc="Preprocess/Melspectrogram", unit="utterance"):
             # 'Not too downsampled' waveform for feature generation
             wave, sr = librosa.load(self._corpus.get_item_path(item_id), sr=self.fbank_config["fs"])
+            # lmspc::(Time, Freq)
             lmspc = logmelspectrogram(
                 x=wave,
                 fs=sr,
@@ -321,7 +322,7 @@ class VCTK_VCC2020Dataset(Dataset):
 
         Returns:
             input_wav_resample (ndarray): Waveform used by Upstream (should be sr=FS)
-            lmspc (ndarray): log-mel spectrogram
+            lmspc (ndarray[Time, Freq]): log-mel spectrogram
             ref_spk_emb: Averaged self|target speaker embeddings
             vc_identity (str, str, str): (target_speaker, source_speaker, utterance_name)
         """
@@ -347,12 +348,12 @@ class VCTK_VCC2020Dataset(Dataset):
 
         Sort data with feature time length, then pad features.
         Args:
-            batch: (B, input_wav_resample, lmspc, ref_spk_emb, vc_identity)
+            batch: (B, input_wav_resample, lmspc::[Time, Freq], ref_spk_emb, vc_identity)
         Returns:
             wavs: List[Tensor(`input_wav_resample`)]
-            acoustic_features: List[Tensor(`lmspc`)]
+            acoustic_features: List[lmspc::Tensor[Time, Freq]]
             acoustic_features_padded: `acoustic_features` padded by PyTorch function
-            acoustic_feature_lengths: Tensor(feature time length)
+            acoustic_feature_lengths: Tensor[Time,]
             ref_spk_embs: Tensor(`ref_spk_emb`)
             vc_ids: List[(target_speaker, source_speaker, utterance_name)]
         """

@@ -50,7 +50,7 @@ class ConfEncoder:
 class Taco2Encoder(torch.nn.Module):
     """Encoder module of the Tacotron2 TTS model.
 
-    Model: segFC[-(Res(Conv1d[-BN]-ReLU-DO))xN][-MbiLSTM]
+    Model: segFC[-(Res(Conv1d[-BN]-ReLU-DO))xN][-LSTMxM]
 
     Reference:
     _`Natural TTS Synthesis by Conditioning WaveNet on Mel Spectrogram Predictions`_
@@ -155,6 +155,6 @@ class Taco2Encoder(torch.nn.Module):
         xs = pack_padded_sequence(xs.transpose(1, 2), ilens.cpu(), batch_first=True)
         self.blstm.flatten_parameters()
         xs, _ = self.blstm(xs)  # (B, Lmax, C)
+        # Pack then Pad
         xs, hlens = pad_packed_sequence(xs, batch_first=True)
-
         return xs, hlens

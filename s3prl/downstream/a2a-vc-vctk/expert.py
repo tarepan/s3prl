@@ -49,19 +49,29 @@ class Loss(nn.Module):
         return (x - self.target_mean) / self.target_scale
 
     def forward(self, x, y, x_lens, y_lens, device):
+        """
+        Args:
+            x::Tensor[Batch, Tmax, Freq] - predicted_features
+            y - acoustic_features_padded
+            x_lens - predicted_feature_lengths
+            y_lens - acoustic_feature_lengths
+            device
+        """
         # match the input feature length to acoustic feature length to calculate the loss
         if x.shape[1] > y.shape[1]:
             x = x[:, :y.shape[1]]
             masks = make_non_pad_mask(y_lens).unsqueeze(-1).to(device)
         if x.shape[1] <= y.shape[1]:
             y = y[:, :x.shape[1]]
-            masks = make_non_pad_mask(x_lens).unsqueeze(-1).to(device)
-        
-        # calculate masked loss
+            masks = make_non_pad_mask(x_lens).unsqueeze(-1).to(device)        
+
         x_normalized = self.normalize(x)
         y_normalized = self.normalize(y.to(device))
+
+        # slice based on mask by PyTorch function
         x_masked = x_normalized.masked_select(masks)
         y_masked = y_normalized.masked_select(masks)
+
         loss = self.objective(x_masked, y_masked)
         return loss
 
@@ -164,8 +174,9 @@ class DownstreamExpert(nn.Module):
         device = input_features[0].device
         ref_spk_embs = ref_spk_embs.to(device)
 
-        # padding
+        # input_feature_lengths::(B, T)
         input_feature_lengths = torch.IntTensor([feature.shape[0] for feature in input_features])
+        # (T, Feat)[] -> (B, Tmax, Feat)
         input_features = pad_sequence(input_features, batch_first=True).to(device=device)
 
         # Inference (w/o teacher-forcing)

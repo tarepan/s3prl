@@ -8,17 +8,12 @@
 #   Copyright    [ Copyright(c), Toda Lab, Nagoya University, Japan ]
 """*********************************************************************************************"""
 
-"""Basically same with A2O model, but embedding is added. 'Added for A2A' are annotation of the differences."""
-
-
 from warnings import warn
 from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
-from extorch import Conv1dEx
 
 from .dataset import Stat
 from .networks.encoder import Taco2Encoder, ConfEncoder
@@ -198,17 +193,21 @@ class Model(nn.Module):
             lens
             spk_emb (Batch, Spk_emb): speaker embedding vectors as global conditioning
             targets (Batch, T_max, Feature_o): padded target acoustic feature sequences
+        Returns:
+            ((Batch, Tmax, Freq), lens)
         """
         B = features.shape[0]
 
         # Resampling: resample the input features according to resample_ratio
         # (B, T_max, Feat_i) => (B, Feat_i, T_max) => (B, Feat_i, T_max') => (B, T_max', Feat_i)
         features = features.permute(0, 2, 1)
+        # Nearest interpolation
         resampled_features = F.interpolate(features, scale_factor = self.resample_ratio)
         resampled_features = resampled_features.permute(0, 2, 1)
         lens = lens * self.resample_ratio
 
         # Encoder :: (resampled_features:(B, T_max', Feat_i)) -> (B, T_max', Feat_h)
+        # `lens` is used for RNN padding
         encoder_states, lens = self.encoder(resampled_features, lens)
 
         # Global speaker conditioning
@@ -242,13 +241,13 @@ class Model(nn.Module):
                 lstmp_input = concat if i == 0 else z_list[i-1]
                 z_list[i], c_list[i] = lstmp(lstmp_input, z_list[i], c_list[i])
             # Projection & Stack: Stack output_t `proj(o_lstmps)` in full-time list
-            predicted_list += [self.proj(z_list[-1]).view(B, self.output_dim, -1)] # projection is done here to ensure output dim
+            predicted_list += [self.proj(z_list[-1]).view(B, self.output_dim, -1)]
             # teacher-forcing if `target` else pure-autoregressive
             prev_out = targets[t] if targets is not None else predicted_list[-1].squeeze(-1)
             # AR spectrum is normalized (todo: could be moved up, but it change t=0 behavior)
             prev_out = self.normalize(prev_out)
             # /Single time step
-        predicted = torch.cat(predicted_list, dim=2)
-        predicted = predicted.transpose(1, 2)  # (B, hidden_dim, Lmax) -> (B, Lmax, hidden_dim)
+        # (Batch, Freq, 1?)[] -> (Batch, Freq, Tmax) -> (Batch, Tmax, Freq)
+        predicted = torch.cat(predicted_list, dim=2).transpose(1, 2)
 
         return predicted, lens
