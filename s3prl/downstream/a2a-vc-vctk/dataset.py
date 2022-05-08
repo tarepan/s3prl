@@ -253,8 +253,6 @@ class VCTK_VCC2020Dataset(Dataset):
                 n_mels=self.fbank_config["n_mels"],
                 n_fft=self.fbank_config["n_fft"],
                 n_shift=self.fbank_config["n_shift"],
-                win_length=self.fbank_config["win_length"],
-                window=self.fbank_config["window"],
                 fmin=self.fbank_config["fmin"],
                 fmax=self.fbank_config["fmax"],
             )

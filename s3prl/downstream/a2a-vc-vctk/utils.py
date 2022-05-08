@@ -368,8 +368,6 @@ def logmelspectrogram(
     n_mels,
     n_fft,
     n_shift,
-    win_length=None,
-    window="hann",
     fmin=0.0,
     fmax=None,
     eps=1e-10,
