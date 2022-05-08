@@ -15,6 +15,8 @@ import logging
 import numpy as np
 import os
 import torch
+from librosa.feature import melspectrogram
+
 
 ################################################################################
 
@@ -360,64 +362,6 @@ def griffin_lim(spc, n_fft, n_shift, win_length, window="hann", n_iters=100):
 
 ################################################################################
 
-# The following function are based on:
-# https://github.com/espnet/espnet/blob/master/espnet/transform/spectrogram.py
-
-def stft(
-    x, n_fft, n_shift, win_length=None, window="hann", center=True, pad_mode="reflect"
-):
-    """STFT.
-
-    This function can handle multi-channel waveform (e.g. Left&Right channels)
-    """
-    # x: [Time] | [Time, Channel]
-    if x.ndim == 1:
-        single_channel = True
-        # x: [Time] -> [Time, Channel]
-        x = x[:, None]
-    else:
-        single_channel = False
-    x = x.astype(np.float32)
-
-    # FIXME(kamo): librosa.stft can't use multi-channel?
-    # x: [Time, Channel, Freq]
-    x = np.stack(
-        [
-            librosa.stft(
-                x[:, ch],
-                n_fft=n_fft,
-                hop_length=n_shift,
-                win_length=win_length,
-                window=window,
-                center=center,
-                pad_mode=pad_mode,
-            ).T
-            for ch in range(x.shape[1])
-        ],
-        axis=1,
-    )
-
-    if single_channel:
-        # x: [Time, Channel, Freq] -> [Time, Freq]
-        x = x[:, 0]
-    return x
-
-
-def stft2logmelspectrogram(x_stft, fs, n_mels, n_fft, fmin=None, fmax=None, eps=1e-10):
-    # x_stft: (Time, Channel, Freq) or (Time, Freq)
-    fmin = 0 if fmin is None else fmin
-    fmax = fs / 2 if fmax is None else fmax
-
-    # spc: (Time, Channel, Freq) or (Time, Freq)
-    spc = np.abs(x_stft)
-    # mel_basis: (Mel_freq, Freq)
-    mel_basis = librosa.filters.mel(fs, n_fft, n_mels, fmin, fmax)
-    # lmspc: (Time, Channel, Mel_freq) or (Time, Mel_freq)
-    lmspc = np.log10(np.maximum(eps, np.dot(spc, mel_basis.T)))
-
-    return lmspc
-
-
 def logmelspectrogram(
     x,
     fs,
@@ -426,7 +370,7 @@ def logmelspectrogram(
     n_shift,
     win_length=None,
     window="hann",
-    fmin=None,
+    fmin=0.0,
     fmax=None,
     eps=1e-10,
     pad_mode="reflect",
@@ -434,21 +378,25 @@ def logmelspectrogram(
     """Calculate log-mel spectrogram.
 
     Args:
-        x ([Time, Channel] | [Time]): Single- or Multi-channel waveform
-    Returns:
-        (Time, Channel, Mel_freq) | (Time, Mel_freq) log-mel spectrogram
+        x::ndarray[Time,] - waveform
+        fs
+        n_mels - Dimension size of mel
+        n_fft - Length of FFT chunk
+        n_shift - STFT hop length
+        win_length - Length of non-zero window
+        window - FFT window type (`hann` is default value of librosa.stft)
+        fmin - Minumum frequency of mel
+        fmax - Maximum frequency of mel
+        eps
+        pad_mode - STFT padding mode
+    Returns::(Time, Mel_freq) - mel-frequency log(Bel)-amplitude spectrogram
     """
-    # (Time, Channel) | (Time) => (Time, Channel, Freq) | (Time, Freq)
-    x_stft = stft(
-        x,
-        n_fft=n_fft,
-        n_shift=n_shift,
-        win_length=win_length,
-        window=window,
-        pad_mode=pad_mode,
+    mel_freq_amp_spec = melspectrogram(
+        y=x, sr=fs, n_fft=n_fft, hop_length=n_shift, win_length=win_length, window=window, pad_mode=pad_mode,
+        power=1.0,
+        n_mels=n_mels, fmin=fmin, fmax=fmax,
     )
-
-    # (Time, Channel, Freq) | (Time, Freq) => (Time, Channel, Mel_freq) | (Time, Mel_freq)
-    return stft2logmelspectrogram(
-        x_stft, fs=fs, n_mels=n_mels, n_fft=n_fft, fmin=fmin, fmax=fmax, eps=eps
-    )
+    # `power_to_db` hack for linear-amplitude spec to log-amplitude spec conversion
+    mel_freq_log_amp_spec = librosa.power_to_db(mel_freq_amp_spec, ref=1.0, amin=eps, top_db=None)
+    # Decibel to Bel
+    return mel_freq_log_amp_spec.T/10.

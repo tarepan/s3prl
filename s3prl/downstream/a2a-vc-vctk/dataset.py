@@ -246,7 +246,7 @@ class VCTK_VCC2020Dataset(Dataset):
         for item_id in tqdm(self._sources, desc="Preprocess/Melspectrogram", unit="utterance"):
             # 'Not too downsampled' waveform for feature generation
             wave, sr = librosa.load(self._corpus.get_item_path(item_id), sr=self.fbank_config["fs"])
-            # lmspc::(Time, Freq)
+            # lmspc::(Time, Freq) - Mel-frequency Log(ref=1, Bel)-amplitude spectrogram
             lmspc = logmelspectrogram(
                 x=wave,
                 fs=sr,
@@ -279,7 +279,7 @@ class VCTK_VCC2020Dataset(Dataset):
         return scaler
 
     def _calculate_spec_stat(self):
-        """Calculate mean and variance of source spectrograms."""
+        """Calculate mean and variance of source non-standardized spectrograms."""
 
         # Implementation Notes:
         #   Dataset could be huge, so loading all spec could cause memory overflow.
@@ -322,7 +322,7 @@ class VCTK_VCC2020Dataset(Dataset):
 
         Returns:
             input_wav_resample (ndarray): Waveform used by Upstream (should be sr=FS)
-            lmspc (ndarray[Time, Freq]): log-mel spectrogram
+            lmspc (ndarray[Time, Freq]): Non-standardized log-mel spectrogram
             ref_spk_emb: Averaged self|target speaker embeddings
             vc_identity (str, str, str): (target_speaker, source_speaker, utterance_name)
         """
