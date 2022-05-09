@@ -13,17 +13,17 @@ class ConfDecoderPreNet:
     """Configuration of Decoder's PreNet
 
     Args:
-        idim - Dimension size of input
+        dim_i - Dimension size of input
+        dim_h_o - Dimension size of hidden and final layers
         n_layers - Number of FC layer
-        n_units - Dimension size of hidden and final layers
         dropout_rate: float=0.5    
     """
-    idim: int
+    dim_i: int
+    dim_h_o: int
     n_layers: int
-    n_units: int
     dropout_rate: float
 
-class Taco2Prenet(torch.nn.Module):
+class Taco2Prenet(nn.Module):
     """Prenet module for decoder of Tacotron2.
 
     Model: (FC-ReLU-DO)xN | DO
@@ -47,13 +47,18 @@ class Taco2Prenet(torch.nn.Module):
         super(Taco2Prenet, self).__init__()
         self._conf = conf
         self.dropout_rate = conf.dropout_rate
+
+        # Dimension size check for DO only prenet (0-layers)
+        if conf.n_layers == 0:
+            assert dim_i == dim_h_o
+
         # WholeNet
         self.prenet = torch.nn.ModuleList()
         for layer in range(conf.n_layers):
-            n_inputs = conf.idim if layer == 0 else conf.n_units
+            n_inputs = conf.dim_i if layer == 0 else conf.dim_h_o
             self.prenet += [
                 # FC-ReLU
-                torch.nn.Sequential(torch.nn.Linear(n_inputs, conf.n_units), torch.nn.ReLU())
+                torch.nn.Sequential(torch.nn.Linear(n_inputs, conf.dim_h_o), torch.nn.ReLU())
             ]
 
     def forward(self, x):
@@ -64,3 +69,67 @@ class Taco2Prenet(torch.nn.Module):
         for i in range(len(self.prenet)):
             x = F.dropout(self.prenet[i](x), self.dropout_rate)
         return x
+
+
+class ExLSTMCell(nn.Module):
+    ''' Extended LSTM cell
+
+    Model: input ---|
+           z_t-1' ----LSTMCell---- z_t -[-LN][-DO][-FC-Tanh] - z_t'
+           c_t-1  __|          |__ c_t
+    '''
+
+    def __init__(self, dim_i: int, dim_h_o: int, dropout: float, layer_norm: bool, projection: bool):
+        """
+        Args:
+            dim_i - Dimension size of input
+            dim_h_o - Dimension size of LSTM hidden/cell state and total output
+            dropout - Dropout probability
+            layer_norm - Whether to use LayerNormalization
+            projection - Whether to use non-linear projection after hidden state (LSTMP)
+        """
+        super().__init__()
+        # Mode flags
+        self.dropout = dropout
+        self.layer_norm = layer_norm
+        self.proj = projection
+
+        self.cell = nn.LSTMCell(dim_i, dim_h_o)
+
+        # Normalization
+        if self.layer_norm:
+            self.ln = nn.LayerNorm(dim_h_o)
+
+        # Dropout
+        if self.dropout > 0:
+            self.dp = nn.Dropout(p=dropout)
+
+        # Projection: FC-Tanh
+        if self.proj:
+            self.pj = nn.Linear(dim_h_o, dim_h_o)
+    
+    def forward(self, input_x, z, c):
+        """
+        Step RNN cell.
+
+        Args:
+            input_x - RNN input_t
+            z - hidden state t-1, could be projected hidden state
+            c - cell state t-1
+        Returns:
+            new_z - hidden state t, could be projected, used also as output
+            new_c - cell state t
+        """
+
+        new_z, new_c = self.cell(input_x, (z, c))
+
+        if self.layer_norm:
+            new_z = self.ln(new_z)
+
+        if self.dropout > 0:
+            new_z = self.dp(new_z)
+
+        if self.proj:
+            new_z = torch.tanh(self.pj(new_z))
+
+        return new_z, new_c

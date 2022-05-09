@@ -18,87 +18,31 @@ import torch.nn.functional as F
 from .dataset import Stat
 from .networks.encoder import Taco2Encoder, ConfEncoder
 from .networks.conditioning import GlobalCondNet, ConfGlobalCondNet
-from .networks.decoder import Taco2Prenet, ConfDecoderPreNet
+from .networks.decoder import Taco2Prenet, ConfDecoderPreNet, ExLSTMCell
 
 
-class RNNCell(nn.Module):
-    ''' RNN cell wrapper
-
-    Model: RNNCell[-LN][-DO][-FC-Tanh]
-    '''
-
-    def __init__(self, input_dim, module, dim, dropout:float, layer_norm:bool, proj:bool):
-        """
-        Args:
-            input_dim
-            module: module name for dynamic RNN type switching (e.g."LSTM")
-            dim
-            dropout: Dropout probability
-            layer_norm: Whether to use LayerNormalization
-            proj: Whether to use non-linear projection
-        """
-        super(RNNCell, self).__init__()
-        # Setup
-        rnn_out_dim = dim
-        self.out_dim = rnn_out_dim
-        self.dropout = dropout
-        self.layer_norm = layer_norm
-        self.proj = proj
-
-        # RNN cell
-        self.cell = getattr(nn, module.upper()+"Cell")(input_dim, dim)
-
-        # Normalization
-        if self.layer_norm:
-            self.ln = nn.LayerNorm(rnn_out_dim)
-
-        # Dropout
-        if self.dropout > 0:
-            self.dp = nn.Dropout(p=dropout)
-
-        # Projection: FC-Tanh
-        if self.proj:
-            self.pj = nn.Linear(rnn_out_dim, rnn_out_dim)
-    
-    def forward(self, input_x, z, c):
-
-        new_z, new_c = self.cell(input_x, (z, c))
-
-        if self.layer_norm:
-            new_z = self.ln(new_z)
-
-        if self.dropout > 0:
-            new_z = self.dp(new_z)
-
-        if self.proj:
-            new_z = torch.tanh(self.pj(new_z))
-
-        return new_z, new_c
 
 ################################################################################
 
+@dataclass
+class ConfDecoderMainNet:
+    dim_i_cond: int # Dimension size of conditioning input
+    dim_i_ar: int   # Dimension size of processed AR input
+    dim_h: int    # Dimension size of RNN hidden units
+    num_layers: int
+    dropout_rate: float
+    layer_norm: bool
+    projection: bool = True
+    dim_o: int    # Dimension size of output
+
+@dataclass
 class ConfModel:
     """Configuration of Model"""
-    input_dim: int,        # Dimension size of input feature
-    output_dim: int,       # Dimension size of output mel-spectrum
-    hidden_dim: int,
-    resample_ratio: float, # Time-directional up/down sampling ratio toward input series
-    # Encoder
-    enc_bidi: bool,        # Whether to use bidirectional
-    enc_conv_causal: bool, # Whether to use causal convolution
-    # Decoder
-    ## PreNet
-    prenet_layers: int,         # Number of layers
-    prenet_dim: int,            # Number of each layer's dimension
-    prenet_dropout_rate: float, # Dropout rate
-    ## MainNet
-    lstmp_layers: int,         # Number of layers
-    lstmp_dropout_rate: float, # Dropout rate
-    lstmp_layernorm: bool,     # Whether to use LayerNorm
-    stats: Stat,               # Spectrum normalization stats
-    # 'Added for A2A'
-    spk_emb_integration_type: str, # "add" | "concat"
-    spk_emb_dim: int,              # Number of embedding dimension
+    hidden_dim: int,       # Dimension size of latent, equal to o_encoder and i_decoder (preserved for future local sync)
+    encoder: ConfEncoder
+    global_cond: ConfGlobalCondNet
+    dec_prenet: ConfDecoderPreNet
+    dec_mainnet: ConfDecoderMainNet
 
 class Model(nn.Module):
     """
@@ -108,83 +52,47 @@ class Model(nn.Module):
     segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1LSTM-cat_(z_t, AR-norm-(segFC-ReLU-DO)xN)-(1uniLSTM[-LN][-DO]-segFC-Tanh)xL-segFC
     """
 
-    def __init__(self,
-                 input_dim,
-                 output_dim,
-                 resample_ratio,
-                 stats,
-                 hidden_dim,
-                 lstmp_layers: int,
-                 lstmp_dropout_rate,
-                 lstmp_proj_dim,
-                 lstmp_layernorm: bool,
-                 spk_emb_integration_type,
-                 spk_emb_dim,
-                 prenet_layers=2,
-                 prenet_dim=256,
-                 prenet_dropout_rate=0.5,
-                 enc_bidi: bool = True,
-                 enc_conv_causal: bool = False,
-                 **kwargs):
+    def __init__(self, resample_ratio, stats: Stat, conf: ConfModel):
         """
         Args:
-            stats (`Stat`): Statistics object for normalization
-            enc_bidi: Whether Encoder LSTM is bidirectional or not. 
+            stats (`Stat`): Spectrum statistics container for normalization
         """
         super(Model, self).__init__()
 
-        self.hidden_dim = hidden_dim # this is also the decoder output dim
-        self.output_dim = output_dim # acoustic feature dim
         self.resample_ratio = resample_ratio
 
-        # Encoder: segFC-Conv-biLSTM
-        ## model: segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1LSTM`h`, `h` stand for `hidden_dim`
-        self.encoder = Taco2Encoder(
-            ConfEncoder(
-                input_dim, eunits=hidden_dim, bidirectional=enc_bidi, causal=enc_conv_causal
-        ))
+        # Speaker-independent Encoder: segFC-Conv-LSTM // segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1LSTM
+        self.encoder = Taco2Encoder(conf.encoder)
 
-        # Speaker conditioning
-        self.cond_net = GlobalCondNet(
-            ConfGlobalCondNet(spk_emb_integration_type, hidden_dim, spk_emb_dim)
-        )
+        # Global speaker conditioning network
+        self.global_cond = GlobalCondNet(conf.global_cond)
 
         # Decoder
-        ## Normalization
+        ## PreNet: (segFC-ReLU-DO)xN
         self.register_buffer("target_mean", torch.from_numpy(stats.mean_).float())
         self.register_buffer("target_scale", torch.from_numpy(stats.scale_).float())
-        ## PreNet: (segFC-ReLU-DO)xN
-        self.prenet = Taco2Prenet(
-            ConfDecoderPreNet(
-                idim=output_dim,
-                n_layers=prenet_layers,
-                n_units=prenet_dim,
-                dropout_rate=prenet_dropout_rate,
-        ))
+        self.prenet = Taco2Prenet(conf.dec_prenet)
         ## MainNet: LSTMP + linear projection
-        ### lstmps: (1uniLSTM[-LN][-DO]-segFC-Tanh)xN
+        conf = conf.dec_mainnet
+        ### LSTMP: (1uniLSTM[-LN][-DO][-segFC-Tanh])xN
         self.lstmps = nn.ModuleList()
-        for i in range(lstmp_layers):
-            prev_dim = output_dim if prenet_layers == 0 else prenet_dim
-            rnn_input_dim = hidden_dim + prev_dim if i == 0 else hidden_dim
-            rnn_layer = RNNCell(
-                rnn_input_dim,
-                "LSTM",
-                hidden_dim,
-                lstmp_dropout_rate,
-                lstmp_layernorm,
-                proj=True,
+        for i_layer in range(conf.num_layers):
+            # cat(local_cond, process(ar)) OR lower layer hidden_state/output
+            dim_i_lstm = conf.dim_i_cond + conf.dim_i_ar if i_layer == 0 else conf.dim_h
+            rnn_layer = ExLSTMCell(
+                dim_i=dim_i_lstm,
+                dim_h_o=conf.dim_h,
+                dropout=conf.dropout_rate,
+                layer_norm=conf.layer_norm,
+                projection=conf.projection,
             )
             self.lstmps.append(rnn_layer)
         ### Projection: segFC
-        self.proj = torch.nn.Linear(hidden_dim, output_dim)
+        self.proj = torch.nn.Linear(conf.dim_h, conf.dim_o)
+        self.dim_o = conf.dim_o
         ## PostNet: None
         pass
 
-    def normalize(self, x):
-        """Normalize spectrum for AR"""
-        return (x - self.target_mean) / self.target_scale
-    
     def forward(self, features, lens, spk_emb, targets = None):
         """Convert unit sequence into acoustic feature sequence.
 
@@ -206,12 +114,12 @@ class Model(nn.Module):
         resampled_features = resampled_features.permute(0, 2, 1)
         lens = lens * self.resample_ratio
 
-        # Encoder :: (resampled_features:(B, T_max', Feat_i)) -> (B, T_max', Feat_h)
-        # `lens` is used for RNN padding
-        encoder_states, lens = self.encoder(resampled_features, lens)
+        # (resampled_features:(B, T_max', Feat_i)) -> (B, T_max', Feat_h)
+        # `lens` is used for RNN padding. `si` stands for speaker-independent
+        si_latent_series, lens = self.encoder(resampled_features, lens)
 
-        # Global speaker conditioning
-        encoder_states = self.cond_net(encoder_states, spk_emb)
+        # (B, T_max', Feat_h) -> (B, T_max', Feat_h)
+        conditioning_series = self.global_cond(si_latent_series, spk_emb)
 
         # Decoder: spec_t' = f(spec_t, cond_t), cond_t == f(unit_t, spk_g)
         # AR decofing w/ or w/o teacher-forcing
@@ -221,31 +129,33 @@ class Model(nn.Module):
         predicted_list = []
 
         # Initialize LSTM hidden state and cell state of all LSTMP layers, and x_t-1
-        c_list = [encoder_states.new_zeros(B, self.hidden_dim)]
-        z_list = [encoder_states.new_zeros(B, self.hidden_dim)]
+        _tensor = conditioning_series
+        c_list = [_tensor.new_zeros(B, self.conf.dec_mainnet.dim_h)]
+        z_list = [_tensor.new_zeros(B, self.conf.dec_mainnet.dim_h)]
         for _ in range(1, len(self.lstmps)):
-            c_list += [encoder_states.new_zeros(B, self.hidden_dim)]
-            z_list += [encoder_states.new_zeros(B, self.hidden_dim)]
-        prev_out = encoder_states.new_zeros(B, self.output_dim)
+            c_list += [_tensor.new_zeros(B, self.conf.dec_mainnet.dim_h)]
+            z_list += [_tensor.new_zeros(B, self.conf.dec_mainnet.dim_h)]
+        prev_out = _tensor.new_zeros(B, self.conf.dec_mainnet.dim_o)
 
         # step-by-step loop for autoregressive decoding
-        ## encoder_state::(B, hidden_dim)
-        for t, encoder_state in enumerate(encoder_states.transpose(0, 1)):
+        ## local_cond::(B, hidden_dim)
+        for t, local_cond in enumerate(conditioning_series.transpose(0, 1)):
             # Single time step
-            ## PreNet(t-1) & Concat
-            concat = torch.cat([encoder_state, self.prenet(prev_out)], dim=1) # each encoder_state has shape (B, hidden_dim)
+            ## RNN input (local conditioning and processed AR)
+            ar = self.prenet(prev_out)
+            cond_plus_ar = torch.cat([local_cond, ar], dim=1)
             ## Run single time step of all LSTMP layers
             for i, lstmp in enumerate(self.lstmps):
                 # Run a layer (1uniLSTM[-LN][-DO]-segFC-Tanh), then update states
-                # Input: (latent_t, t-1) OR below layer's hidden state
-                lstmp_input = concat if i == 0 else z_list[i-1]
+                # Input: RNN input OR lower layer's output
+                lstmp_input = cond_plus_ar if i == 0 else z_list[i-1]
                 z_list[i], c_list[i] = lstmp(lstmp_input, z_list[i], c_list[i])
             # Projection & Stack: Stack output_t `proj(o_lstmps)` in full-time list
-            predicted_list += [self.proj(z_list[-1]).view(B, self.output_dim, -1)]
+            predicted_list += [self.proj(z_list[-1]).view(B, self.dim_o, -1)]
             # teacher-forcing if `target` else pure-autoregressive
             prev_out = targets[t] if targets is not None else predicted_list[-1].squeeze(-1)
             # AR spectrum is normalized (todo: could be moved up, but it change t=0 behavior)
-            prev_out = self.normalize(prev_out)
+            prev_out = (prev_out - self.target_mean) / self.target_scale
             # /Single time step
         # (Batch, Freq, 1?)[] -> (Batch, Freq, Tmax) -> (Batch, Tmax, Freq)
         predicted = torch.cat(predicted_list, dim=2).transpose(1, 2)

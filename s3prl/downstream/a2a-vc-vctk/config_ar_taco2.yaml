@@ -48,15 +48,18 @@ downstream_expert:
       gl_iters: 64
 
   modelrc:
+    hidden_dim: 1024 # Latent between Encoder and Decoder
+    # Encoder
+    enc_conv_causal: False
+    enc_bidi: True
+    # Global conditioning
     spk_emb_integration_type: concat # add or concat
     spk_emb_dim: 256
-    hidden_dim: 1024
-    prenet_layers: 2  # if set 0, no prenet is used
+    # Decoder prenet
     prenet_dim: 256
+    prenet_layers: 2
     prenet_dropout_rate: 0.5
+    # Decoder mainnet
     lstmp_layers: 2
-    lstmp_dropout_rate: 0.2
-    lstmp_proj_dim: 256
     lstmp_layernorm: False
-    enc_bidi: True
-    enc_conv_causal: False
+    lstmp_dropout_rate: 0.2
