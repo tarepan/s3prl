@@ -248,11 +248,13 @@ class VCTK_VCC2020Dataset(Dataset):
             wave, sr = librosa.load(self._corpus.get_item_path(item_id), sr=self.fbank_config["fs"])
             # lmspc::(Time, Freq) - Mel-frequency Log(ref=1, Bel)-amplitude spectrogram
             lmspc = logmelspectrogram(
-                x=wave,
-                fs=sr,
-                n_mels=self.fbank_config["n_mels"],
+                wave=wave,
+                sampling_rate=sr,
                 n_fft=self.fbank_config["n_fft"],
-                n_shift=self.fbank_config["n_shift"],
+                hop_length=self.fbank_config["n_shift"],
+                ref_db=0.,
+                min_db_rel=-200.,
+                n_mels=self.fbank_config["n_mels"],
                 fmin=self.fbank_config["fmin"],
                 fmax=self.fbank_config["fmax"],
             )

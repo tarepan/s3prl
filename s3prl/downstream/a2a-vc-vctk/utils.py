@@ -7,6 +7,7 @@
 """*********************************************************************************************"""
 
 
+from typing import Optional
 from pathlib import Path
 import fnmatch
 import h5py
@@ -15,7 +16,7 @@ import logging
 import numpy as np
 import os
 import torch
-from librosa.feature import melspectrogram
+import librosa.feature
 
 
 ################################################################################
@@ -362,39 +363,52 @@ def griffin_lim(spc, n_fft, n_shift, win_length, window="hann", n_iters=100):
 
 ################################################################################
 
+def db_to_linear(decibel: float) -> float:
+    """Convert level [dB(ref=1,power)] to linear"""
+    return 10**(decibel/20.)
+
+
 def logmelspectrogram(
-    x,
-    fs,
-    n_mels,
-    n_fft,
-    n_shift,
-    fmin=0.0,
-    fmax=None,
-    eps=1e-10,
-    pad_mode="reflect",
+    wave: np.ndarray,
+    sampling_rate: int,
+    n_fft: int,
+    hop_length: int,
+    ref_db: float,
+    min_db_rel: float,
+    n_mels: int,
+    fmin: int,
+    fmax: Optional[int],
 ):
-    """Calculate log-mel spectrogram.
+    """Convert a waveform to a scaled mel-frequency log-amplitude spectrogram.
 
     Args:
-        x::ndarray[Time,] - waveform
-        fs
-        n_mels - Dimension size of mel
+        wave::ndarray[Time,] - waveform
+        sampling_rate - waveform sampling rate
         n_fft - Length of FFT chunk
-        n_shift - STFT hop length
-        win_length - Length of non-zero window
-        window - FFT window type (`hann` is default value of librosa.stft)
-        fmin - Minumum frequency of mel
-        fmax - Maximum frequency of mel
-        eps
-        pad_mode - STFT padding mode
+        hop_length - STFT hop length
+        ref_db - Reference level [dB(ref=1,power)]
+        min_db_rel - Minimum level relative to reference [dB(ref=1,power)]
+        n_mels - Dimension size of mel frequency
+        fmin - Minumum frequency of mel spectrogram
+        fmax - Maximum frequency of mel spectrogram, None==sr/2
     Returns::(Time, Mel_freq) - mel-frequency log(Bel)-amplitude spectrogram
     """
-    mel_freq_amp_spec = melspectrogram(
-        y=x, sr=fs, n_fft=n_fft, hop_length=n_shift, win_length=win_length, window=window, pad_mode=pad_mode,
-        power=1.0,
-        n_mels=n_mels, fmin=fmin, fmax=fmax,
+    # mel-frequency linear-amplitude spectrogram
+    mel_freq_amp_spec = librosa.feature.melspectrogram(
+        y=wave,
+        sr=sampling_rate,
+        n_fft=n_fft,
+        hop_length=hop_length,
+        n_mels=n_mels,
+        fmin=fmin,
+        fmax=fmax,
+        # norm=,
+        power=1,
+        pad_mode="reflect",
     )
+    # [-inf, `min_db`, `ref_db`, +inf] dB(ref=1,power) => [`min_db_rel`/20, `min_db_rel`/20, 0, +inf]
+    min_db = ref_db + min_db_rel
+    ref, amin = db_to_linear(ref_db), db_to_linear(min_db)
     # `power_to_db` hack for linear-amplitude spec to log-amplitude spec conversion
-    mel_freq_log_amp_spec = librosa.power_to_db(mel_freq_amp_spec, ref=1.0, amin=eps, top_db=None)
-    # Decibel to Bel
+    mel_freq_log_amp_spec = librosa.power_to_db(mel_freq_amp_spec, ref=ref, amin=amin, top_db=None)
     return mel_freq_log_amp_spec.T/10.
