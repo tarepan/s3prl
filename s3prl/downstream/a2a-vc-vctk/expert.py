@@ -202,34 +202,56 @@ class DownstreamExpert(nn.Module):
 
         device = input_features[0].device
         spk_embs = spk_embs.to(device)
+        acoustic_features_padded = acoustic_features_padded.to(device)
 
         # input_feature_lengths::(B, T)
         input_feature_lengths = torch.IntTensor([feature.shape[0] for feature in input_features])
         # (T, Feat)[] -> (B, Tmax, Feat)
         input_features = pad_sequence(input_features, batch_first=True).to(device=device)
 
-        # Inference (w/o teacher-forcing)
-        if split in ["dev", "test"]:
-            # The forward
-            predicted_features, predicted_feature_lengths = self.model(
-                input_features,
-                input_feature_lengths,
-                spk_embs,
+        if split == "train":
+            loss = self.training_step((
+                input_features, input_feature_lengths, \
+                acoustic_features_padded, acoustic_feature_lengths, \
+                spk_embs, device,
+                ), 1
             )
-
-            # save the unnormalized features for dev and test sets
-            records["predicted_features"] += predicted_features.cpu().numpy().tolist()
-            records["feature_lengths"] += predicted_feature_lengths.cpu().numpy().tolist()
-            records["vc_ids"] += vc_ids
-        # Training (w/ teacher-forcing)
         else:
-            # The forward
-            predicted_features, predicted_feature_lengths = self.model(
-                input_features,
-                input_feature_lengths,
-                spk_embs,
-                acoustic_features_padded.to(device),
+            loss = self.validation_step((
+                input_features, input_feature_lengths, \
+                acoustic_features_padded, acoustic_feature_lengths, \ 
+                spk_embs, device, records
+                ), 2
             )
+            records["vc_ids"] += vc_ids
+
+        records['loss'].append(loss.item())
+        return loss
+
+    def training_step(self, batch, batch_idx: int):
+        """Forward a batch.
+
+        Args:
+            batch
+                input_features
+                input_feature_lengths
+                acoustic_features_padded
+                acoustic_feature_lengths
+                spk_embs - Speaker embeddings
+                device - device
+            batch_idx - Batch index in a training epoch
+        Returns - loss
+        """
+        input_features, input_feature_lengths, \
+            acoustic_features_padded, acoustic_feature_lengths, \
+            spk_embs, device = batch
+
+        # The forward
+        predicted_features, predicted_feature_lengths = self.model(
+            input_features, input_feature_lengths, \
+            spk_embs,
+            acoustic_features_padded,
+        )
 
         # Masked/normalized L1 loss
         loss = self.objective(predicted_features,
@@ -237,7 +259,29 @@ class DownstreamExpert(nn.Module):
                               predicted_feature_lengths,
                               acoustic_feature_lengths,
                               device)
-        records['loss'].append(loss.item())
+        return loss
+
+    def validation_step(self, batch, batch_idx: int):
+        input_features, input_feature_lengths, \
+            acoustic_features_padded, acoustic_feature_lengths, \ 
+            spk_embs, device, records = batch
+
+        predicted_features, predicted_feature_lengths = self.model(
+            input_features,
+            input_feature_lengths,
+            spk_embs,
+        )
+        # Masked/normalized L1 loss
+        loss = self.objective(predicted_features,
+                            acoustic_features_padded,
+                            predicted_feature_lengths,
+                            acoustic_feature_lengths,
+                            device)
+        # self.log("val_loss", loss)
+
+        # save the unnormalized features for dev and test sets
+        records["predicted_features"] += predicted_features.cpu().numpy().tolist()
+        records["feature_lengths"] += predicted_feature_lengths.cpu().numpy().tolist()
 
         return loss
 
