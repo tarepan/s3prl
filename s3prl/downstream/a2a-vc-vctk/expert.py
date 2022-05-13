@@ -184,7 +184,7 @@ class DownstreamExpert(nn.Module):
                 acoustic_features,
                 acoustic_features_padded,
                 acoustic_feature_lengths,
-                ref_spk_embs,
+                spk_embs,
                 vc_ids,
                 records,
                 **kwargs):
@@ -196,12 +196,12 @@ class DownstreamExpert(nn.Module):
             acoustic_features: List[Tensor(`lmspc`)], not used...?
             acoustic_features_padded: `acoustic_features` padded by PyTorch function
             acoustic_feature_lengths: Tensor(feature time length)
-            ref_spk_embs: Tensor(`ref_spk_emb`)
+            spk_embs: Tensor(`ref_spk_emb`)
             vc_ids: List[(target_spk, source_spk, uttr_name)]
         """
 
         device = input_features[0].device
-        ref_spk_embs = ref_spk_embs.to(device)
+        spk_embs = spk_embs.to(device)
 
         # input_feature_lengths::(B, T)
         input_feature_lengths = torch.IntTensor([feature.shape[0] for feature in input_features])
@@ -214,7 +214,7 @@ class DownstreamExpert(nn.Module):
             predicted_features, predicted_feature_lengths = self.model(
                 input_features,
                 input_feature_lengths,
-                ref_spk_embs,
+                spk_embs,
             )
 
             # save the unnormalized features for dev and test sets
@@ -227,7 +227,7 @@ class DownstreamExpert(nn.Module):
             predicted_features, predicted_feature_lengths = self.model(
                 input_features,
                 input_feature_lengths,
-                ref_spk_embs,
+                spk_embs,
                 acoustic_features_padded.to(device),
             )
 
@@ -240,6 +240,11 @@ class DownstreamExpert(nn.Module):
         records['loss'].append(loss.item())
 
         return loss
+
+    def predict_step(self, batch, batch_idx: int):
+        # unit_series, spk_emb = batch
+        # return self.model(unit_series, spk_emb)
+        pass
 
     # interface
     def log_records(self, split, records, logger, global_step, batch_ids, total_batch_num, **kwargs):

@@ -330,7 +330,7 @@ class VCTK_VCC2020Dataset(Dataset):
         Returns:
             input_wav_resample (ndarray): Waveform used by Upstream (should be sr=FS)
             lmspc (ndarray[Time, Freq]): Non-standardized log-mel spectrogram
-            ref_spk_emb: Averaged self|target speaker embeddings
+            spk_emb: Averaged self|target speaker embeddings
             vc_identity (str, str, str): (target_speaker, source_speaker, utterance_name)
         """
 
@@ -342,8 +342,8 @@ class VCTK_VCC2020Dataset(Dataset):
         lmspc              = read_npy(self._get_path_mel(source_id))
 
         # An averaged embedding of the speaker's N utterances
-        ref_spk_embs = [read_npy(self._get_path_emb(item_id)) for item_id in target_ids]
-        ref_spk_emb = np.mean(np.stack(ref_spk_embs, axis=0), axis=0)
+        spk_embs = [read_npy(self._get_path_emb(item_id)) for item_id in target_ids]
+        spk_emb = np.mean(np.stack(spk_embs, axis=0), axis=0)
 
         # VC identity (target_speaker,        source_speaker,    utterance_name)
         vc_identity = (target_ids[0].speaker, source_id.speaker, source_id.name)
@@ -363,20 +363,20 @@ class VCTK_VCC2020Dataset(Dataset):
             end_wave = min(wav_length, round(effective_stride * end_mel) + 1)
             input_wav_resample = input_wav_resample[start_wave : end_wave]
 
-        return input_wav_resample, lmspc, ref_spk_emb, vc_identity
+        return input_wav_resample, lmspc, spk_emb, vc_identity
     
     def collate_fn(self, batch):
         """collate function used by dataloader.
 
         Sort data with feature time length, then pad features.
         Args:
-            batch: (B, input_wav_resample, lmspc::[Time, Freq], ref_spk_emb, vc_identity)
+            batch: (B, input_wav_resample, lmspc::[Time, Freq], spk_emb, vc_identity)
         Returns:
             wavs: List[Tensor(`input_wav_resample`)]
             acoustic_features: List[lmspc::Tensor[Time, Freq]]
             acoustic_features_padded: `acoustic_features` padded by PyTorch function
             acoustic_feature_lengths: Tensor[Time,]
-            ref_spk_embs: Tensor(`ref_spk_emb`)
+            spk_embs: Tensor(`spk_emb`)
             vc_ids: List[(target_speaker, source_speaker, utterance_name)]
         """
 
@@ -387,7 +387,7 @@ class VCTK_VCC2020Dataset(Dataset):
         acoustic_features =     list(map(lambda item: torch.from_numpy(item[1]), sorted_batch))
         acoustic_features_padded = pad_sequence(acoustic_features, batch_first=True)
         acoustic_feature_lengths = torch.from_numpy(np.array(list(map(lambda feat: feat.size(0), acoustic_features))))
-        ref_spk_embs = torch.from_numpy(np.array(list(map(lambda item: item[2],  sorted_batch))))
+        spk_embs = torch.from_numpy(np.array(list(map(lambda item: item[2],  sorted_batch))))
         vc_ids =               list(map(lambda item:                   item[3],  sorted_batch))
 
-        return wavs, acoustic_features, acoustic_features_padded, acoustic_feature_lengths, ref_spk_embs, vc_ids
+        return wavs, acoustic_features, acoustic_features_padded, acoustic_feature_lengths, spk_embs, vc_ids
