@@ -8,7 +8,7 @@
 
 
 import random
-from typing import List
+from typing import List, Tuple
 from pathlib import Path
 import pickle
 from dataclasses import dataclass
@@ -100,6 +100,13 @@ def generate_vc_tuples(
             vc_tuple = [src, *random.sample(utts_of_trgspk, num_target)]
             full_list.append(vc_tuple)
     return full_list
+
+
+def random_clip_index(full_length: int, clip_length: int) -> Tuple[int, int]:
+    """Calculate indexes for array clipping. Tested."""
+    start = random.randrange(0, full_length - (clip_length - 1))
+    end = start + clip_length
+    return start, end
 
 
 class VCTK_VCC2020Dataset(Dataset):
@@ -340,6 +347,21 @@ class VCTK_VCC2020Dataset(Dataset):
 
         # VC identity (target_speaker,        source_speaker,    utterance_name)
         vc_identity = (target_ids[0].speaker, source_id.speaker, source_id.name)
+
+        # Chunked training
+        if self.split == "train":
+            len_mel_chunk = 50
+
+            # Time-directional random clipping ::(T_mel, freq) -> (clip_mel, freq)
+            start_mel, end_mel = random_clip_index(lmspc.size()[-2], len_mel_chunk)
+            lmspc = lmspc[start_mel : end_mel]
+
+            # Waveform clipping
+            wav_length = len(input_wav_resample)
+            effective_stride = self.fbank_config["n_shift"] * (FS / self.fbank_config["fs"])
+            start_wave = max(0, round(effective_stride * start_mel))
+            end_wave = min(wav_length, round(effective_stride * end_mel) + 1)
+            input_wav_resample = input_wav_resample[start_wave : end_wave]
 
         return input_wav_resample, lmspc, ref_spk_emb, vc_identity
     
