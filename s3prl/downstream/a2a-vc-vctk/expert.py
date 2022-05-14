@@ -116,30 +116,30 @@ class DownstreamExpert(nn.Module):
 
         # Model configuration
         conf = ConfModel(
-            dim_latent=self.modelrc.hidden_dim,
+            dim_latent=self.modelrc["hidden_dim"],
             encoder=ConfEncoder(
                 dim_i=self.upstream_dim,
-                causal=self.modelrc.enc_conv_causal,
-                bidirectional=self.modelrc.enc_bidi,
-                dim_o=self.modelrc.hidden_dim,),
+                causal=self.modelrc["enc_conv_causal"],
+                bidirectional=self.modelrc["enc_bidi"],
+                dim_o=self.modelrc["hidden_dim"],),
             global_cond=ConfGlobalCondNet(
-                integration_type=self.modelrc.spk_emb_integration_type,
-                dim_io=self.modelrc.hidden_dim,
-                dim_global_cond=self.modelrc.spk_emb_dim,),
+                integration_type=self.modelrc["spk_emb_integration_type"],
+                dim_io=self.modelrc["hidden_dim"],
+                dim_global_cond=self.modelrc["spk_emb_dim"],),
             # dec.dim_ar=,
             # dec.dim_o=self.acoustic_feature_dim
             dec_prenet=ConfDecoderPreNet(
                 dim_i=self.acoustic_feature_dim,
-                dim_h_o=self.modelrc.prenet_dim,
-                n_layers=self.modelrc.prenet_layers,
-                dropout_rate=self.modelrc.prenet_dropout_rate,),
+                dim_h_o=self.modelrc["prenet_dim"],
+                n_layers=self.modelrc["prenet_layers"],
+                dropout_rate=self.modelrc["prenet_dropout_rate"],),
             dec_mainnet=ConfDecoderMainNet(
-                dim_i_cond=self.modelrc.hidden_dim,
-                dim_i_ar=self.modelrc.prenet_dim,
-                dim_h=self.modelrc.hidden_dim,
-                num_layers=self.modelrc.lstmp_layers,
-                dropout_rate=self.modelrc.lstmp_dropout_rate,
-                layer_norm=self.modelrc.lstmp_layernorm,
+                dim_i_cond=self.modelrc["hidden_dim"],
+                dim_i_ar=self.modelrc["prenet_dim"],
+                dim_h=self.modelrc["hidden_dim"],
+                num_layers=self.modelrc["lstmp_layers"],
+                dropout_rate=self.modelrc["lstmp_dropout_rate"],
+                layer_norm=self.modelrc["lstmp_layernorm"],
                 projection=True,
                 dim_o=self.acoustic_feature_dim,),
         )
