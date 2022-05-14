@@ -103,3 +103,20 @@ If you have any questions, please open an issue, or contact through email: wen.c
 
 [paper]: https://arxiv.org/abs/2110.06280
 [notebook]: https://colab.research.google.com/github/tarepan/s3prl/blob/master/s3prl/downstream/a2a-vc-vctk/training.ipynb
+
+#### Decoding
+
+After model training finishes (by followingthe [Training](#training) section), use the following script to perform custom decoding:
+
+```
+cd <root-to-s3prl>/s3prl
+./downstream/a2a-vc-vctk/custom_decode.sh <tag> <upstream> <ep> <vocoder_dir> <list_path>
+```
+
+For example:
+
+```
+./downstream/a2a-vc-vctk/custom_decode.sh ar_taco2 vq_wav2vec 50000 downstream/a2a-vc-vctk/hifigan_vctk downstream/a2a-vc-vctk/data/lists/custom_eval_wenchin.yaml
+```
+
+After the decoding process ends, you should be able to find the generated files in `result/downstream/a2a_vc_vctk_<tag>_<upstream>/custom_test/`.

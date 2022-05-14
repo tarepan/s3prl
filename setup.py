@@ -17,7 +17,7 @@ requirements = [
     "scikit-learn>=0.23.2",
     "PyYAML>=5.4",
     "tqdm>=4.56.0",
-    "numpy>=1.19.5, <1.21",
+    "numpy>=1.21",
     "pandas>=1.1.5",
     "tensorboardX>=1.9, <2.3",
     "matplotlib>=3.3.4",
@@ -44,7 +44,10 @@ requirements = [
     "easydict",
     "catalyst",
     "sentencepiece",
-    "huggingface_hub",
+    "huggingface_hub>=0.2.1", # TODO: Replace with v0.0.17 when it is released
+    "mutagen",
+    # "fairseq @ git+https://github.com//pytorch/fairseq.git@f2146bdc7abf293186de9449bfa2272775e39e1d#egg=fairseq",
+    "lighthubert @ git+https://github.com/mechanicalsea/lighthubert#egg=lighthubert"
 ]
 
 # Arguments marked as "Required" below must be included for upload to PyPI.
