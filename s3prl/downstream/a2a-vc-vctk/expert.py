@@ -263,7 +263,7 @@ class DownstreamExpert(nn.Module):
 
     def validation_step(self, batch, batch_idx: int):
         input_features, input_feature_lengths, \
-            acoustic_features_padded, acoustic_feature_lengths, \ 
+            acoustic_features_padded, acoustic_feature_lengths, \
             spk_embs, device, records = batch
 
         predicted_features, predicted_feature_lengths = self.model(
