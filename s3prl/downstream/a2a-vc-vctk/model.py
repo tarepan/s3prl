@@ -32,7 +32,7 @@ class ConfDecoderMainNet:
     num_layers: int
     dropout_rate: float
     layer_norm: bool
-    projection: bool = True
+    projection: bool
     dim_o: int    # Dimension size of output
 
 @dataclass
