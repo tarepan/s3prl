@@ -8,7 +8,7 @@
 
 
 import random
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from pathlib import Path
 import pickle
 from dataclasses import dataclass
@@ -124,6 +124,7 @@ class VCTK_VCC2020Dataset(Dataset):
         corpus_train_dev: str,
         corpus_test: str,
         num_dev_sample: int,
+        len_chunk: Optional[int],
         download: bool = False,
         train_dev_seed=1337,
         **kwargs
@@ -141,6 +142,7 @@ class VCTK_VCC2020Dataset(Dataset):
             corpus_train_dev: Name of corpus for train/dev
             corpus_test: Name of corpus for test
             num_dev_sample: Number of dev samples per single speaker
+            len_chunk: Length of datum chunk, no-chunking when None
             download: Whether to download train/dev corpus if needed
             train_dev_seed: Random seed, affect item order
         """
@@ -148,6 +150,7 @@ class VCTK_VCC2020Dataset(Dataset):
         self.split = split
         self.fbank_config = fbank_config
         self._num_target = num_target
+        self._len_chunk = len_chunk
 
         corpus_name = corpus_train_dev if (split == 'train' or split == 'dev') else corpus_test
         self._corpus = load_preset(corpus_name, root=adress_data_root, download=download)
@@ -349,11 +352,9 @@ class VCTK_VCC2020Dataset(Dataset):
         vc_identity = (target_ids[0].speaker, source_id.speaker, source_id.name)
 
         # Chunked training
-        if self.split == "train":
-            len_mel_chunk = 50
-
+        if (self.split == "train") and (self._len_chunk != None):
             # Time-directional random clipping ::(T_mel, freq) -> (clip_mel, freq)
-            start_mel, end_mel = random_clip_index(lmspc.size()[-2], len_mel_chunk)
+            start_mel, end_mel = random_clip_index(lmspc.size()[-2], self._len_chunk)
             lmspc = lmspc[start_mel : end_mel]
 
             # Waveform clipping
