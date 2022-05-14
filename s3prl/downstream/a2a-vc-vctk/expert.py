@@ -219,7 +219,7 @@ class DownstreamExpert(nn.Module):
         else:
             loss = self.validation_step((
                 input_features, input_feature_lengths, \
-                acoustic_features_padded, acoustic_feature_lengths, \ 
+                acoustic_features_padded, acoustic_feature_lengths, \
                 spk_embs, device, records
                 ), 2
             )
