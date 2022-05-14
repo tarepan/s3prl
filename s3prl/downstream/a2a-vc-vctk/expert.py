@@ -154,14 +154,9 @@ class DownstreamExpert(nn.Module):
         if split == 'train':
             return self._get_train_dataloader(self.train_dataset)
         elif split == 'dev':
-            self.dev_dataset = VCTK_VCC2020Dataset('dev', **self.datarc)
             return self._get_eval_dataloader(self.dev_dataset)
         elif split == 'test':
-            self.test_dataset = VCTK_VCC2020Dataset('test', **self.datarc)
             return self._get_eval_dataloader(self.test_dataset)
-        elif split == 'custom_test':
-            from .dataset import CustomDataset
-            return self._get_eval_dataloader(CustomDataset(self.datarc["eval_pair_list_file"], self.datarc["spk_emb_source"]))
 
     def _get_train_dataloader(self, dataset):
         """collate_fn should be implemented as dataset's method"""
@@ -288,7 +283,7 @@ class DownstreamExpert(nn.Module):
         records["predicted_features"] += predicted_features.cpu().numpy().tolist()
         records["feature_lengths"] += predicted_feature_lengths.cpu().numpy().tolist()
 
-            return loss
+        return loss
 
     def predict_step(self, batch, batch_idx: int):
         # unit_series, spk_emb = batch
