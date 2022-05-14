@@ -58,7 +58,7 @@ class Model(nn.Module):
             stats (`Stat`): Spectrum statistics container for normalization
         """
         super(Model, self).__init__()
-
+        self.conf = conf
         self.resample_ratio = resample_ratio
 
         # Speaker-independent Encoder: segFC-Conv-LSTM // segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1LSTM
