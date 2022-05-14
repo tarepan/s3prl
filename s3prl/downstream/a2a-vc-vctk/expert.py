@@ -22,7 +22,11 @@ from torch.utils.data import DataLoader, DistributedSampler
 from torch.distributed import is_initialized
 from torch.nn.utils.rnn import pad_sequence
 
-from .model import Model, ConfModel
+from .model import Model, ConfModel, ConfDecoderMainNet
+from .networks.encoder import ConfEncoder
+from .networks.conditioning import ConfGlobalCondNet
+from .networks.decoder import ConfDecoderPreNet
+
 from .dataset import VCTK_VCC2020Dataset, Stat
 from .utils import make_non_pad_mask
 from .utils import write_hdf5
