@@ -38,7 +38,7 @@ class ConfDecoderMainNet:
 @dataclass
 class ConfModel:
     """Configuration of Model"""
-    hidden_dim: int       # Dimension size of latent, equal to o_encoder and i_decoder (preserved for future local sync)
+    dim_latent: int       # Dimension size of latent, equal to o_encoder and i_decoder (preserved for future local sync)
     encoder: ConfEncoder
     global_cond: ConfGlobalCondNet
     dec_prenet: ConfDecoderPreNet
