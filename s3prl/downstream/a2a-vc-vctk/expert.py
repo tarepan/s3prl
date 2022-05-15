@@ -21,6 +21,8 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.distributed import is_initialized
 from torch.nn.utils.rnn import pad_sequence
+from torch.optim import AdamW
+from torch.optim.lr_scheduler import StepLR
 
 from .model import Model, ConfModel, ConfDecoderMainNet
 from .networks.encoder import ConfEncoder
@@ -214,19 +216,21 @@ class DownstreamExpert(nn.Module):
         input_features = pad_sequence(input_features, batch_first=True).to(device=device)
 
         if split == "train":
-            loss = self.training_step((
+            results = self.training_step((
                 input_features, input_feature_lengths, \
                 acoustic_features_padded, acoustic_feature_lengths, \
                 spk_embs, device,
                 ), 1
             )
+            loss = results["loss"]
         else:
-            loss = self.validation_step((
+            results = self.validation_step((
                 input_features, input_feature_lengths, \
                 acoustic_features_padded, acoustic_feature_lengths, \
                 spk_embs, device, records
                 ), 2
             )
+            loss = results["val_loss"]
             records["vc_ids"] += vc_ids
 
         records['loss'].append(loss.item())
@@ -263,7 +267,9 @@ class DownstreamExpert(nn.Module):
                               predicted_feature_lengths,
                               acoustic_feature_lengths,
                               device)
-        return loss
+
+        # self.log("loss", loss)
+        return {"loss": loss}
 
     def validation_step(self, batch, batch_idx: int):
         input_features, input_feature_lengths, \
@@ -287,12 +293,46 @@ class DownstreamExpert(nn.Module):
         records["predicted_features"] += predicted_features.cpu().numpy().tolist()
         records["feature_lengths"] += predicted_feature_lengths.cpu().numpy().tolist()
 
-        return loss
+        # todo: Synthesis
+        pass
+
+        # [PyTorch](https://pytorch.org/docs/stable/tensorboard.html#torch.
+        #     utils.tensorboard.writer.SummaryWriter.add_audio)
+        # self.logger.experiment.add_audio(
+        #     f"audio_{batch_idx}",
+        #     wave, # snd_tensor: Tensor(1, L)
+        #     global_step=self.global_step,
+        #     sample_rate=self.conf.sampling_rate,
+        # )
+
+        return {"val_loss": loss}
 
     def predict_step(self, batch, batch_idx: int):
         # unit_series, spk_emb = batch
         # return self.model(unit_series, spk_emb)
         pass
+
+    def configure_optimizers(self):
+        """Set up a optimizer
+        """
+        pass
+        # conf_optim = self.conf.optimizer
+        # conf_sched = self.conf.scheduler
+
+        # optim = AdamW(self.parameters(), lr=conf.lr)
+        # # get_linear_schedule_with_warmup
+        # sched = {
+        #     "scheduler": get_linear_schedule_with_warmup(
+        #         optim,
+        #         get_linear_schedule_with_warmup(optimizer, conf_sched.num_warmup_steps, num_training_steps, last_epoch=-1),
+        #     ),
+        #     "interval": "step",
+        # }
+
+        # return {
+        #     "optimizer": optim,
+        #     "lr_scheduler": sched,
+        # }
 
     # interface
     def log_records(self, split, records, logger, global_step, batch_ids, total_batch_num, **kwargs):
