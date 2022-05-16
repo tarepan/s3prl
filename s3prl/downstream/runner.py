@@ -432,7 +432,9 @@ class Runner():
                     tqdm.write(f'[Runner] - Save the checkpoint to:')
                     for i, path in enumerate(save_paths):
                         tqdm.write(f'{i + 1}. {path}')
+                        # Save
                         torch.save(all_states, path)
+                        # /
 
                 # Explicitly tick global step progress bar
                 pbar.update(1)
