@@ -6,7 +6,9 @@
 #   Copyright    [ Copyright(c), Toda Lab, Nagoya University, Japan ]
 # *********************************************************************************************
 
-voc_expdir=$1 # ./downstream/a2a-vc-vctk/hifigan_vctk
+# HiFi-GAN checkpoint directory: ./downstream/a2a-vc-vctk/hifigan_vctk
+voc_expdir=$1
+
 # Directory in which generated spectrograms exist
 #     e.g. `result/downstream/a2a_vc_vctk_taco2_ar_decoar2/50000`
 outdir=$2
