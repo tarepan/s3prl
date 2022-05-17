@@ -354,7 +354,7 @@ class VCTK_VCC2020Dataset(Dataset):
         # Chunked training
         if (self.split == "train") and (self._len_chunk != None):
             # Time-directional random clipping ::(T_mel, freq) -> (clip_mel, freq)
-            start_mel, end_mel = random_clip_index(lmspc.size()[-2], self._len_chunk)
+            start_mel, end_mel = random_clip_index(lmspc.shape[-2], self._len_chunk)
             lmspc = lmspc[start_mel : end_mel]
 
             # Waveform clipping
