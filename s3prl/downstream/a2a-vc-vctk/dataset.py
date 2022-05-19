@@ -180,16 +180,14 @@ class VCTK_VCC2020Dataset(Dataset):
             if corpus_name == "JVS":
                 all_utterances = split_jvs(all_utterances)[0]
             # target is self, source:target = 1:1
-            ## Data split: [0, -2X] is for train, [-X:] is for dev for each speaker
             is_train = split == 'train'
             idx_dev = -1*num_dev_sample
             for spk in set(map(lambda item_id: item_id.speaker, all_utterances)):
-                utts_spk = list(map(
-                    # self target
-                    lambda item_id: [item_id, item_id],
-                    filter(lambda item_id: item_id.speaker == spk, all_utterances)
-                ))
-                self._vc_tuples.extend(utts_spk[:2*idx_dev] if is_train else utts_spk[idx_dev:])
+                # [[X#1, X#1], [X#2, X#2], ..., [X#n, X#n]]
+                utts_spk = filter(lambda item_id: item_id.speaker == spk, all_utterances)
+                tuples_spk = list(map(lambda item_id: [item_id, item_id], utts_spk))
+                ## Data split: [0, -2X] is for train, [-X:] is for dev for each speaker
+                self._vc_tuples.extend(tuples_spk[:2*idx_dev] if is_train else tuples_spk[idx_dev:])
             random.seed(train_dev_seed)
             random.shuffle(self._vc_tuples)
             self._sources = list(map(lambda vc_tuple: vc_tuple[0], self._vc_tuples))
@@ -294,6 +292,7 @@ class VCTK_VCC2020Dataset(Dataset):
         # Implementation Notes:
         #   Dataset could be huge, so loading all spec could cause memory overflow.
         #   For this reason, this implementation repeat 'load a spec and stack stats'.
+        #   TODO: replace with `StandardScaler().partial_fit`
 
         # average spectrum over source utterances :: (MelFreq)
         spec_stack = None
@@ -339,12 +338,14 @@ class VCTK_VCC2020Dataset(Dataset):
 
         selected = self._vc_tuples[index]
         source_id = selected[0]
+        # Train: the self utterance (n = 1)
+        # Dev/Test: another speaker utterances (n = num_dev_sample | num_target)
         target_ids = selected[1:]
 
         input_wav_resample = read_npy(self._get_path_wav(source_id))
         lmspc              = read_npy(self._get_path_mel(source_id))
 
-        # An averaged embedding of the speaker's N utterances
+        # An averaged embedding of the speaker X's utterances (N==`len(target_ids)`)
         spk_embs = [read_npy(self._get_path_emb(item_id)) for item_id in target_ids]
         spk_emb = np.mean(np.stack(spk_embs, axis=0), axis=0)
 
