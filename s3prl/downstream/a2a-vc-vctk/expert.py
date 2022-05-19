@@ -349,6 +349,21 @@ class DownstreamExpert(nn.Module):
             "lr_scheduler": sched,
         }
 
+    def mel_taco_to_rnnms(self, log_amp_bel: torch.Tensor) -> torch.Tensor:
+        """
+        Convert TacoVC-compatible mel-spectrogram to RNNMS-compatible one.
+
+        Args:
+            log_amp_bel::[Batch==1, TimeMel, Freq] - log(ref=0dB, min=-200dB)-amplitude [B]
+        Returns:
+            rnnms_mel::[Batch==1, TimeMel, Freq] - scaled(1/80)-log(ref=20dB, minrel=-80dB)-power
+        """
+        log_amp_dB = 10. * log_amp_bel # log(ref=0dB, min=-200dB)-amplitude [dB]
+        log_pow = 2. * log_amp_dB      # log(S^2/1) = 2*log(S/1) ==> 10*log(S^2/1) [dB] = 10*2*log(S/1) = 2*(10*log(S/1))
+        log_pow_ref20 = log_pow - 20.
+        log_pow_ref20_minrel80 = torch.maximum(torch.tensor([-80.]), log_pow_ref20)
+        return log_pow_ref20_minrel80 / 80.
+
     # interface
     def log_records(self, split, records, logger, global_step, batch_ids, total_batch_num, **kwargs):
         """S3PRL interface for logging.
