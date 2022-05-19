@@ -30,7 +30,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.dataset import Dataset
 
 from resemblyzer import preprocess_wav, VoiceEncoder
-from .utils import logmelspectrogram, read_npy, write_npy
+from .utils import logmelspectrogram, ConfMelspec, read_npy, write_npy
 
 
 # Hardcoded resampling rate for upstream
@@ -153,6 +153,17 @@ class VCTK_VCC2020Dataset(Dataset):
         self._num_target = num_target
         self._len_chunk = len_chunk
 
+        self.conf_mel = ConfMelspec(
+            sampling_rate=fbank_config["fs"],
+            n_fft=        fbank_config["n_fft"],
+            hop_length=   fbank_config["n_shift"],
+            ref_db=0.,
+            min_db_rel=-200.,
+            n_mels=       fbank_config["n_mels"],
+            fmin=         fbank_config["fmin"],
+            fmax=         fbank_config["fmax"],
+        )
+
         corpus_name = corpus_train_dev if (split == 'train' or split == 'dev') else corpus_test
         self._corpus = load_preset(corpus_name, root=adress_data_root, download=download)
 
@@ -253,20 +264,10 @@ class VCTK_VCC2020Dataset(Dataset):
 
         # Mel-spectrogram
         for item_id in tqdm(self._sources, desc="Preprocess/Melspectrogram", unit="utterance"):
-            # 'Not too downsampled' waveform for feature generation
-            wave, sr = librosa.load(self._corpus.get_item_path(item_id), sr=self.fbank_config["fs"])
+            # Resampling for mel-spec generation
+            wave, _ = librosa.load(self._corpus.get_item_path(item_id), sr=self.fbank_config["fs"])
             # lmspc::(Time, Freq) - Mel-frequency Log(ref=1, Bel)-amplitude spectrogram
-            lmspc = logmelspectrogram(
-                wave=wave,
-                sampling_rate=sr,
-                n_fft=self.fbank_config["n_fft"],
-                hop_length=self.fbank_config["n_shift"],
-                ref_db=0.,
-                min_db_rel=-200.,
-                n_mels=self.fbank_config["n_mels"],
-                fmin=self.fbank_config["fmin"],
-                fmax=self.fbank_config["fmax"],
-            )
+            lmspc = logmelspectrogram(wave=wave, conf=self.conf_mel)
             write_npy(self._get_path_mel(item_id), lmspc)
 
         # Statistics

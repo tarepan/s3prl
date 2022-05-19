@@ -9,14 +9,16 @@
 
 from typing import Optional
 from pathlib import Path
+from dataclasses import dataclass
+import os
+
 import fnmatch
 import h5py
-import librosa
-import logging
 import numpy as np
-import os
-import torch
+import librosa
 import librosa.feature
+import logging
+import torch
 
 
 ################################################################################
@@ -368,21 +370,11 @@ def db_to_linear(decibel: float) -> float:
     return 10**(decibel/20.)
 
 
-def logmelspectrogram(
-    wave: np.ndarray,
-    sampling_rate: int,
-    n_fft: int,
-    hop_length: int,
-    ref_db: float,
-    min_db_rel: float,
-    n_mels: int,
-    fmin: int,
-    fmax: Optional[int],
-):
-    """Convert a waveform to a scaled mel-frequency log-amplitude spectrogram.
-
+@dataclass
+class ConfMelspec:
+    """
+    Configuration of mel-spectrogram
     Args:
-        wave::ndarray[Time,] - waveform
         sampling_rate - waveform sampling rate
         n_fft - Length of FFT chunk
         hop_length - STFT hop length
@@ -391,24 +383,42 @@ def logmelspectrogram(
         n_mels - Dimension size of mel frequency
         fmin - Minumum frequency of mel spectrogram
         fmax - Maximum frequency of mel spectrogram, None==sr/2
+    """
+    sampling_rate: int
+    n_fft: int
+    hop_length: int
+    ref_db: float
+    min_db_rel: float
+    n_mels: int
+    fmin: int
+    fmax: Optional[int]
+
+def logmelspectrogram(wave: np.ndarray, conf: ConfMelspec) -> np.ndarray:
+    """Convert a waveform to a scaled mel-frequency log-amplitude spectrogram.
+
+    Args:
+        wave::ndarray[Time,] - waveform
+        conf - Configuration
     Returns::(Time, Mel_freq) - mel-frequency log(Bel)-amplitude spectrogram
     """
-    # mel-frequency linear-amplitude spectrogram
+    # mel-frequency linear-amplitude spectrogram :: [Freq=n_mels, T_mel]
     mel_freq_amp_spec = librosa.feature.melspectrogram(
         y=wave,
-        sr=sampling_rate,
-        n_fft=n_fft,
-        hop_length=hop_length,
-        n_mels=n_mels,
-        fmin=fmin,
-        fmax=fmax,
+        sr=conf.sampling_rate,
+        n_fft=conf.n_fft,
+        hop_length=conf.hop_length,
+        n_mels=conf.n_mels,
+        fmin=conf.fmin,
+        fmax=conf.fmax,
         # norm=,
         power=1,
         pad_mode="reflect",
     )
     # [-inf, `min_db`, `ref_db`, +inf] dB(ref=1,power) => [`min_db_rel`/20, `min_db_rel`/20, 0, +inf]
-    min_db = ref_db + min_db_rel
+    min_db = conf.ref_db + conf.min_db_rel
     ref, amin = db_to_linear(ref_db), db_to_linear(min_db)
     # `power_to_db` hack for linear-amplitude spec to log-amplitude spec conversion
     mel_freq_log_amp_spec = librosa.power_to_db(mel_freq_amp_spec, ref=ref, amin=amin, top_db=None)
-    return mel_freq_log_amp_spec.T/10.
+    mel_freq_log_amp_spec_bel = mel_freq_log_amp_spec/10.
+    mel_freq_log_amp_spec_bel = mel_freq_log_amp_spec_bel.T
+    return mel_freq_log_amp_spec_bel
