@@ -17,6 +17,7 @@ from scipy.io import wavfile
 import librosa
 import soundfile as sf
 import numpy as np
+from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 from speechcorpusy import load_preset
 from speechdatasety.helper.archive import hash_args
@@ -292,7 +293,8 @@ class VCTK_VCC2020Dataset(Dataset):
         # Implementation Notes:
         #   Dataset could be huge, so loading all spec could cause memory overflow.
         #   For this reason, this implementation repeat 'load a spec and stack stats'.
-        #   TODO: replace with `StandardScaler().partial_fit`
+        #   TODO: Fix wrong SD calculation (now: Sum of abs, correct: Root of square sum)
+        #   TODO: replace with `StandardScaler().partial_fit` (for bug fix and simplification)
 
         # average spectrum over source utterances :: (MelFreq)
         spec_stack = None
