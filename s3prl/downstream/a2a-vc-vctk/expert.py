@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 from torch.distributed import is_initialized
 from torch.nn.utils.rnn import pad_sequence
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import LambdaLR
 
 from .model import Model, ConfModel, ConfDecoderMainNet
 from .networks.encoder import ConfEncoder
@@ -82,6 +82,19 @@ class Loss(nn.Module):
         return loss
 
 
+@dataclass
+class ConfOptim:
+    """Configuration of optimizer.
+    Args:
+        learning_rate: Optimizer learning rate
+        sched_warmup_step: The number of LR shaduler warmup steps
+        sched_total_step: The number of total training steps
+    """
+    learning_rate: float = MISSING
+    sched_warmup_step: int = MISSING
+    sched_total_step: int = MISSING
+
+
 class DownstreamExpert(nn.Module):
     """S3PRL interface of a2a-vc-vctk
 
@@ -106,7 +119,6 @@ class DownstreamExpert(nn.Module):
         # Time-directional up/down sampling ratio toward input series
         self.resample_ratio = _fs / self.datarc["fbank_config"]["n_shift"] * upstream_rate / FS
         print('[Downstream] - resample_ratio: ' + str(self.resample_ratio))
-
         # Load datasets
         self.train_dataset = VCTK_VCC2020Dataset('train', **self.datarc)
         self.dev_dataset = VCTK_VCC2020Dataset('dev', **self.datarc)
@@ -223,6 +235,7 @@ class DownstreamExpert(nn.Module):
                 ), 1
             )
             loss = results["loss"]
+        # eval | test
         else:
             results = self.validation_step((
                 input_features, input_feature_lengths, \
@@ -315,24 +328,26 @@ class DownstreamExpert(nn.Module):
     def configure_optimizers(self):
         """Set up a optimizer
         """
-        pass
-        # conf_optim = self.conf.optimizer
-        # conf_sched = self.conf.scheduler
 
-        # optim = AdamW(self.parameters(), lr=conf.lr)
-        # # get_linear_schedule_with_warmup
-        # sched = {
-        #     "scheduler": get_linear_schedule_with_warmup(
-        #         optim,
-        #         get_linear_schedule_with_warmup(optimizer, conf_sched.num_warmup_steps, num_training_steps, last_epoch=-1),
-        #     ),
-        #     "interval": "step",
-        # }
+        optim = AdamW(self.model.parameters(), lr=self.conf.optim.learning_rate)
 
-        # return {
-        #     "optimizer": optim,
-        #     "lr_scheduler": sched,
-        # }
+        # Scheduler's multiplicative factor function
+        total_steps = self.conf.optim.sched_total_step
+        warmup_steps = self.conf.optim.sched_warmup_step
+        def lr_lambda(now: int) -> float:
+            """0@0 ---> (linear) ---> 1@`warmup_steps` ---> (linear) ---> 0@`total_steps`"""
+            is_warmup = now < warmup_steps
+            return (now / warmup_steps) if is_warmup else (total_steps - now) / (total_steps - warmup_steps)
+
+        sched = {
+            "scheduler": LambdaLR(optim, lr_lambda),
+            "interval": "step",
+        }
+
+        return {
+            "optimizer": optim,
+            "lr_scheduler": sched,
+        }
 
     # interface
     def log_records(self, split, records, logger, global_step, batch_ids, total_batch_num, **kwargs):
@@ -374,8 +389,10 @@ class DownstreamExpert(nn.Module):
                 records["vc_ids"],
                 dynamic_ncols=True, desc="Inference/Generate_waveform"
             )):
+                # Save each item in `predicted_features` w/o contents modification
                 # No.i in a batch
                 length = int(records["feature_lengths"][i])
+                # Remove padding:: (T_mel, Freq)
                 fbank = np.array(records["predicted_features"][i])[:length]
 
                 # Path preparation

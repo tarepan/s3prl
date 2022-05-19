@@ -9,8 +9,16 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
 
 
-def get_scheduler(optimizer, total_steps, scheduler_config):
+def get_scheduler(optimizer, total_steps: int, scheduler_config):
+    """Dynamic instantiation of the LR scheduler.
+
+    Args:
+        optimizer - The optimizer for which to schedule the learning rate
+        total_steps - The total number of training steps
+        scheduler_config - Scheduler-specific configs
+    """
     scheduler_config = copy.deepcopy(scheduler_config)
+    # `scheduler.name: NAME`
     scheduler_name = scheduler_config.pop('name')
     scheduler = eval(f'get_{scheduler_name}')(
         optimizer,
@@ -18,6 +26,9 @@ def get_scheduler(optimizer, total_steps, scheduler_config):
         **scheduler_config
     )
     return scheduler
+
+
+# `get_NAME` is called in response to `scheduler.name: NAME` config
 
 
 def get_cosine_with_hard_restarts_schedule_with_warmup(
@@ -95,6 +106,7 @@ def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_st
     """
     Create a schedule with a learning rate that decreases linearly from the initial lr set in the optimizer to 0,
     after a warmup period during which it increases linearly from 0 to the initial lr set in the optimizer.
+    0 ---> (linear) ---> lr ---> (linear) ---> 0
     Args:
         optimizer (:class:`~torch.optim.Optimizer`):
             The optimizer for which to schedule the learning rate.
@@ -107,14 +119,10 @@ def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_st
     Return:
         :obj:`torch.optim.lr_scheduler.LambdaLR` with the appropriate schedule.
     """
-
-    def lr_lambda(current_step: int):
-        if current_step < num_warmup_steps:
-            return float(current_step) / float(max(1, num_warmup_steps))
-        return max(
-            0.0, float(num_training_steps - current_step) /
-            float(max(1, num_training_steps - num_warmup_steps))
-        )
+    def lr_lambda(current_step: int) -> float:
+        decrease_steps = num_training_steps - num_warmup_steps
+        is_warmup = current_step < num_warmup_steps
+        return (current_step / num_warmup_steps) if is_warmup else (num_training_steps - current_step) / decrease_steps
 
     return LambdaLR(optimizer, lr_lambda, last_epoch)
 
