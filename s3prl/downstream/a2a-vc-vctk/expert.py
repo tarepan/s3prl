@@ -11,18 +11,21 @@ import os
 import numpy as np
 from dataclasses import dataclass
 from pathlib import Path
+from typing import List
 
 from scipy.io.wavfile import write
 from tqdm import tqdm
 import yaml
 
 import torch
+import torch.cuda
 import torch.nn as nn
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.distributed import is_initialized
 from torch.nn.utils.rnn import pad_sequence
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
+from resemblyzer import preprocess_wav, VoiceEncoder
 
 from .model import Model, ConfModel, ConfDecoderMainNet
 from .networks.encoder import ConfEncoder
@@ -165,6 +168,8 @@ class DownstreamExpert(nn.Module):
             conf=conf,
         )
         self.objective = Loss(self.stats)
+        # Utterance embedding model for inference
+        self.uttr_encoder = None
 
     # Interface
     def get_dataloader(self, split):
@@ -320,10 +325,17 @@ class DownstreamExpert(nn.Module):
 
         return {"val_loss": loss}
 
-    def predict_step(self, batch, batch_idx: int):
-        # unit_series, spk_emb = batch
-        # return self.model(unit_series, spk_emb)
-        pass
+    def predict_step(self, batch, batch_idx: int = 0):
+        """Generate a mel-spectrogram from a unit sequence and speaker embedding.
+        Args:
+            batch
+                unit_series::Tensor[Batch==1, TimeUnit, Feat] - Input unit sequence
+                target_emb::Tensor[Batch==1, Emb] - Target style embedding
+        Returns:
+            Tensor[Batch==1, TimeMel, Freq] - mel-spectrogram
+        """
+        unit_series, target_emb = batch
+        return self.model(unit_series.to(self.device), target_emb.to(self.device))
 
     def configure_optimizers(self):
         """Set up a optimizer
@@ -363,6 +375,25 @@ class DownstreamExpert(nn.Module):
         log_pow_ref20 = log_pow - 20.
         log_pow_ref20_minrel80 = torch.maximum(torch.tensor([-80.]), log_pow_ref20)
         return log_pow_ref20_minrel80 / 80.
+
+    def wavs2emb(self, waves: List[np.ndarray]) -> torch.Tensor:
+        """Convert waveforms into an averaged embedding.
+
+        Args:
+            waves::List[(Time,)] - waveforms, each of which can have different length
+        Returns:
+            ave_emb::Tensor[Batch=1, Emb] - an averaged embedding
+        """
+
+        # Initialization at first call
+        if self.uttr_encoder is None:
+            self.uttr_encoder = VoiceEncoder().to(self.device)
+
+        # Calculate an average of utterance embeddings
+        processed_waves = [preprocess_wav(wave) for wave in waves]
+        ave_emb = self.uttr_encoder.embed_speaker(processed_waves)
+        
+        return torch.unsqueeze(torch.from_numpy(ave_emb), 0)
 
     # interface
     def log_records(self, split, records, logger, global_step, batch_ids, total_batch_num, **kwargs):
@@ -445,3 +476,7 @@ class DownstreamExpert(nn.Module):
                     (y * np.iinfo(np.int16).max).astype(np.int16),
                 )
         return []
+
+    @property
+    def device(self):
+        return next(self.parameters()).device

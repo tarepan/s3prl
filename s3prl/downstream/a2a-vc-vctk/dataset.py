@@ -180,6 +180,10 @@ class VCTK_VCC2020Dataset(Dataset):
         self._path_stats = self._path_contents / "stats.pkl"
 
         # Select data identities.
+        #   Train: reconstruction (source_uttr + source_emb  -> source_uttr)
+        #   Dev:   unseen-reconst (source_uttr + source_emb  -> source_uttr)
+        #   Test:  A2A VC         (source_uttr + ave_tgt_emb -> target_uttr)
+
         all_utterances = self._corpus.get_identities()
         ## list of [content_source_utt, style_target_utt_1, style_target_utt_2, ...]
         self._vc_tuples: List[List[ItemId]] = []
@@ -188,15 +192,16 @@ class VCTK_VCC2020Dataset(Dataset):
         ## Utterance list of style target, which will be preprocessed as embedding
         self._targets: List[ItemId] = []
 
+        # Prepare `_sources` and `_targets`
         if split == 'train' or split == 'dev':
+            # Additionally, prepare self-target `_vc_tuples`
             if corpus_name == "JVS":
                 all_utterances = split_jvs(all_utterances)[0]
-            # target is self, source:target = 1:1
             is_train = split == 'train'
             idx_dev = -1*num_dev_sample
             for spk in set(map(lambda item_id: item_id.speaker, all_utterances)):
-                # [[X#1, X#1], [X#2, X#2], ..., [X#n, X#n]]
                 utts_spk = filter(lambda item_id: item_id.speaker == spk, all_utterances)
+                # tuples_spk = [[X#1, X#1], [X#2, X#2], ..., [X#n, X#n]]
                 tuples_spk = list(map(lambda item_id: [item_id, item_id], utts_spk))
                 ## Data split: [0, -2X] is for train, [-X:] is for dev for each speaker
                 self._vc_tuples.extend(tuples_spk[:2*idx_dev] if is_train else tuples_spk[idx_dev:])
@@ -204,10 +209,8 @@ class VCTK_VCC2020Dataset(Dataset):
             random.shuffle(self._vc_tuples)
             self._sources = list(map(lambda vc_tuple: vc_tuple[0], self._vc_tuples))
             self._targets = list(map(lambda vc_tuple: vc_tuple[1], self._vc_tuples))
-
         elif split == 'test':
-            # Outputs: `self._sources` & `self._targets`
-            # target is other speaker, source:target = 1:N
+            # `_vc_tuples` is not defined here, but defined in preprocessing
             if corpus_name == "VCC20":
                 # Missing utterances in original code: E10001-E10050 (c.f. tarepan/s3prl#2)
                 self._sources = list(filter(lambda item_id: item_id.subtype == "eval_source", all_utterances))
@@ -277,7 +280,7 @@ class VCTK_VCC2020Dataset(Dataset):
 
         # VC tuples
         if self.split == "test":
-            # Generate vc tuples randomly
+            # Generate vc tuples randomly (source:target = 1:num_target)
             vc_tuples = generate_vc_tuples(self._sources, self._targets, self._num_target)
             save_vc_tuples(self._path_contents, self._num_target, vc_tuples)
             print("Preprocess/VC_tuple (only in `test`) - done")
@@ -341,8 +344,8 @@ class VCTK_VCC2020Dataset(Dataset):
 
         selected = self._vc_tuples[index]
         source_id = selected[0]
-        # Train: the self utterance (n = 1)
-        # Dev/Test: another speaker utterances (n = num_dev_sample | num_target)
+        # Train/Dev: the self utterance (n=1)
+        # Test: another speaker utterances (n=num_target)
         target_ids = selected[1:]
 
         input_wav_resample = read_npy(self._get_path_wav(source_id))

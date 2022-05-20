@@ -1,3 +1,4 @@
+scikit-learn
 parallel-wavegan
 fastdtw
 pyworld
