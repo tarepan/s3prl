@@ -105,24 +105,29 @@ class DownstreamExpert(nn.Module):
     Dataset: `VCTK_VCC2020Dataset` (train/dev/test)
     """
 
-    def __init__(self, upstream_dim:int, upstream_rate, downstream_expert, expdir, **kwargs):
+    def __init__(self, upstream_dim:int, upstream_rate, downstream_expert, expdir):
         """
         Args:
             upstream_dim: Feature dimension size of upstream output
             upstream_rate:
         """
-        super(DownstreamExpert, self).__init__()
+        super().__init__()
         
         # basic settings
+        ## Used for dev/test result logging
         self.expdir = expdir
-        self.upstream_dim = upstream_dim
+        ## Used for datasets and dev/test result vocoding
         self.datarc = downstream_expert['datarc']
-        self.modelrc = downstream_expert['modelrc']
-        self.acoustic_feature_dim = self.datarc["fbank_config"]["n_mels"]
-        _fs = self.datarc["fbank_config"]["fs"]
+
         # Time-directional up/down sampling ratio toward input series
-        self.resample_ratio = _fs / self.datarc["fbank_config"]["n_shift"] * upstream_rate / FS
-        print('[Downstream] - resample_ratio: ' + str(self.resample_ratio))
+        _fs = self.datarc["fbank_config"]["fs"]
+        resample_ratio = _fs / self.datarc["fbank_config"]["n_shift"] * upstream_rate / FS
+        print(f'[Downstream] - resample_ratio: {resample_ratio}')
+
+        # Not used in this class, but exists in `example` downstream
+        self.upstream_dim = upstream_dim
+        self.modelrc = downstream_expert['modelrc']
+
         # Load datasets
         self.train_dataset = VCTK_VCC2020Dataset('train', **self.datarc)
         self.dev_dataset = VCTK_VCC2020Dataset('dev', **self.datarc)
@@ -132,39 +137,40 @@ class DownstreamExpert(nn.Module):
         # todo: Is this (AR normalization besed on only trainings, over speaker) good?
         self.stats = self.train_dataset.acquire_spec_stat()
 
+        modelrc = downstream_expert['modelrc']
         # Model configuration
         conf = ConfModel(
-            dim_latent=self.modelrc["hidden_dim"],
+            dim_latent=modelrc["hidden_dim"],
             encoder=ConfEncoder(
-                dim_i=self.upstream_dim,
-                causal=self.modelrc["enc_conv_causal"],
-                bidirectional=self.modelrc["enc_bidi"],
-                dim_o=self.modelrc["hidden_dim"],),
+                dim_i=upstream_dim,
+                causal=modelrc["enc_conv_causal"],
+                bidirectional=modelrc["enc_bidi"],
+                dim_o=modelrc["hidden_dim"],),
             global_cond=ConfGlobalCondNet(
-                integration_type=self.modelrc["spk_emb_integration_type"],
-                dim_io=self.modelrc["hidden_dim"],
-                dim_global_cond=self.modelrc["spk_emb_dim"],),
+                integration_type=modelrc["spk_emb_integration_type"],
+                dim_io=modelrc["hidden_dim"],
+                dim_global_cond=modelrc["spk_emb_dim"],),
             # dec.dim_ar=,
-            # dec.dim_o=self.acoustic_feature_dim
+            # dec.dim_o=self.datarc["fbank_config"]["n_mels"]
             dec_prenet=ConfDecoderPreNet(
-                dim_i=self.acoustic_feature_dim,
-                dim_h_o=self.modelrc["prenet_dim"],
-                n_layers=self.modelrc["prenet_layers"],
-                dropout_rate=self.modelrc["prenet_dropout_rate"],),
+                dim_i=self.datarc["fbank_config"]["n_mels"],
+                dim_h_o=modelrc["prenet_dim"],
+                n_layers=modelrc["prenet_layers"],
+                dropout_rate=modelrc["prenet_dropout_rate"],),
             dec_mainnet=ConfDecoderMainNet(
-                dim_i_cond=self.modelrc["hidden_dim"],
-                dim_i_ar=self.modelrc["prenet_dim"],
-                dim_h=self.modelrc["hidden_dim"],
-                num_layers=self.modelrc["lstmp_layers"],
-                dropout_rate=self.modelrc["lstmp_dropout_rate"],
-                layer_norm=self.modelrc["lstmp_layernorm"],
+                dim_i_cond=modelrc["hidden_dim"],
+                dim_i_ar=modelrc["prenet_dim"],
+                dim_h=modelrc["hidden_dim"],
+                num_layers=modelrc["lstmp_layers"],
+                dropout_rate=modelrc["lstmp_dropout_rate"],
+                layer_norm=modelrc["lstmp_layernorm"],
                 projection=True,
-                dim_o=self.acoustic_feature_dim,),
+                dim_o=self.datarc["fbank_config"]["n_mels"],),
         )
 
         # define model and loss
         self.model = Model(
-            resample_ratio=self.resample_ratio,
+            resample_ratio=resample_ratio,
             stats=self.stats,
             conf=conf,
         )
