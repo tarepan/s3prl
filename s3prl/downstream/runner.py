@@ -203,8 +203,8 @@ class Runner():
         model = Downstream(
             upstream_dim = self.featurizer.model.output_dim,
             upstream_rate = self.featurizer.model.downsample_rate,
-            **self.config,
-            **vars(self.args)
+            **self.config,    # the `config` (come from CLI)
+            **vars(self.args) # the `args`   (come from CLI)
         ).to(self.args.device)
 
         return self._init_model(

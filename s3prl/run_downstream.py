@@ -25,7 +25,7 @@ def get_downstream_args():
     # train or test for this experiment
     parser.add_argument('-m', '--mode', choices=['train', 'evaluate', 'inference'], required=True)
     parser.add_argument('-t', '--evaluate_split', default='test')
-    parser.add_argument('-o', '--override', help='Used to override args and config, this is at the highest priority')
+    parser.add_argument('-o', '--override', help='Top-priority args/config override (e.g. `config.optim.lr=1.0e-3,,config.runner.steps=20000`)')
 
     # distributed training
     parser.add_argument('--backend', default='nccl', help='The backend for distributed training')
@@ -132,21 +132,23 @@ def get_downstream_args():
         args = update_args(args, ckpt['Args'], preserve_list=cannot_overwrite_args)
         os.makedirs(args.expdir, exist_ok=True)
         args.init_ckpt = ckpt_pth
+        # config edit_1/2 - Load config in the checkpoint
         config = ckpt['Config']
 
     else:
         print('[Runner] - Start a new experiment')
         os.makedirs(args.expdir, exist_ok=True)
 
-        if args.config is None:
-            args.config = f'./downstream/{args.downstream}/config.yaml'
-        with open(args.config, 'r') as file:
+        # config edit_1/2 - Load default config yaml | argument config file
+        path_conf = args.config if args.config else f'./downstream/{args.downstream}/config.yaml'
+        with open(path_conf, 'r') as file:
             config = yaml.load(file, Loader=yaml.FullLoader)
 
         if args.upstream_model_config is not None and os.path.isfile(args.upstream_model_config):
             backup_files.append(args.upstream_model_config)
 
     if args.override is not None and args.override.lower() != "none":
+        # config edit_2/2 - Override with `args.override`
         override(args.override, args, config)
         os.makedirs(args.expdir, exist_ok=True)
     
@@ -159,6 +161,7 @@ def main():
     hack_isinstance()
 
     # get config and arguments
+    ## `config` is freezed here
     args, config, backup_files = get_downstream_args()
     if args.cache_dir is not None:
         torch.hub.set_dir(args.cache_dir)
@@ -193,10 +196,8 @@ def main():
     if is_leader_process():
         with open(os.path.join(args.expdir, f'args_{get_time_tag()}.yaml'), 'w') as file:
             yaml.dump(vars(args), file)
-
         with open(os.path.join(args.expdir, f'config_{get_time_tag()}.yaml'), 'w') as file:
             yaml.dump(config, file)
-
         for file in backup_files:
             backup(file, args.expdir)
 
@@ -212,6 +213,7 @@ def main():
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
+    # Execute downstream runner
     runner = Runner(args, config)
     eval(f'runner.{args.mode}')()
 
