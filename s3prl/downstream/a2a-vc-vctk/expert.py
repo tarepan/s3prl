@@ -457,31 +457,13 @@ class DownstreamExpert(nn.Module):
                 write_hdf5(hdf5_save_path, "feats", fbank)
 
                 # Waveform generation from feature for reporting
-                # mel_spec => linear_spec => (Griffin-Lim) => waveform
-                ## mel fbank => linear spectrogram
-                spc = logmelspc_to_linearspc(
-                    fbank,
-                    fs=self.datarc["fbank_config"]["fs"],
-                    n_mels=self.datarc["fbank_config"]["n_mels"],
-                    n_fft=self.datarc["fbank_config"]["n_fft"],
-                    fmin=self.datarc["fbank_config"]["fmin"],
-                    fmax=self.datarc["fbank_config"]["fmax"],
-                )
-                ## linear spectrogram -> Griffin-Lim -> waveform
-                y = griffin_lim(
-                    spc,
-                    n_fft=self.datarc["fbank_config"]["n_fft"],
-                    n_shift=self.datarc["fbank_config"]["n_shift"],
-                    win_length=self.datarc["fbank_config"]["win_length"],
-                    window=self.datarc["fbank_config"]["window"],
-                    n_iters=self.datarc["fbank_config"]["gl_iters"],
-                )
+                # wav = vocoder(fbank)
                 ## save
-                write(
-                    wav_save_path,
-                    self.datarc["fbank_config"]["fs"],
-                    (y * np.iinfo(np.int16).max).astype(np.int16),
-                )
+                # write(
+                #     wav_save_path,
+                #     self.datarc["fbank_config"]["fs"],
+                #     (y * np.iinfo(np.int16).max).astype(np.int16),
+                # )
         return []
 
     @property
