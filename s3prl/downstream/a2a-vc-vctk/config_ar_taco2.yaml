@@ -1,8 +1,8 @@
+# Preserved for S3PRL-VC (when updated, mirror in `downstream_expert` also should be updated)
 runner:
   total_steps: 50000
   gradient_clipping: 1
   gradient_accumulate_steps: 1
-
   log_step: 500
   eval_step: 10000 # 1000
   save_step: 1000
@@ -10,55 +10,84 @@ runner:
   eval_dataloaders:
     - dev
     - test
-
 optimizer:
   name: AdamW
   lr: 1.0e-4
-
 scheduler:
   name: linear_schedule_with_warmup
   num_warmup_steps: 4000
+# /
 
+# True config
 downstream_expert:
-  datarc:
-    num_workers: 3
-    train_batch_size: 6
-    eval_batch_size: 5
-    
+  dim_mel: 80
+  train_steps: 50000
+  model:
+    net:
+      dim_latent: 1024
+      dim_processed_ar: 256
+      dim_o: "${dim_mel}"
+      encoder:
+        dim_i=upstream_dim, #############################
+        causal: False
+        bidirectional: True
+      global_cond:
+        integration_type: concat # add or concat
+        dim_global_cond: 256
+      dec_prenet:
+        n_layers: 2
+        dropout_rate: 0.5
+      dec_mainnet:
+        num_layers: 2
+        dropout_rate: 0.2
+        layer_norm: False
+        projection: True
+    optim:
+      learning_rate: 1.0e-4
+      sched_warmup_step: 4000
+      sched_total_step: "${train_steps}"
+  data:
     adress_data_root: "/content/gdrive/MyDrive/ML_data"
-    download: False
-    corpus_train_dev: "VCTK"
-    corpus_test: "VCC20"
-    num_dev_sample: 5
-    eval_f0_path: "./downstream/a2o-vc-vcc2020/data/f0.yaml"
-
-    num_target: 10
-    len_chunk: null
-
-    fbank_config:
-      fs: 24000
-      n_mels: 80
-      n_fft: 1024
+    corpus:
+      download: False
+      train:
+        name: VCTK
+      val:
+        name: VCTK
+      test:
+        name: VCC20
+    loader:
+      batch_size_train: 6
+      batch_size_val: 5
+      batch_size_test: 5
+      num_workers: null
+      pin_memory: null
+    dataset:
+      num_target: 10
+      num_dev_sample: 5
+      len_chunk: null
+      # clip_length_mel: null # `len_chunk` ######################################
+      train_dev_seed: 1337
       n_shift: 256
-      win_length: null
-      window: "hann"
-      fmin: 80
-      fmax: 7600
-      gl_iters: 64
-
-  modelrc:
-    hidden_dim: 1024 # Latent between Encoder and Decoder
-    # Encoder
-    enc_conv_causal: False
-    enc_bidi: True
-    # Global conditioning
-    spk_emb_integration_type: concat # add or concat
-    spk_emb_dim: 256
-    # Decoder prenet
-    prenet_dim: 256
-    prenet_layers: 2
-    prenet_dropout_rate: 0.5
-    # Decoder mainnet
-    lstmp_layers: 2
-    lstmp_layernorm: False
-    lstmp_dropout_rate: 0.2
+      sr_for_mel: 24000
+      mel:
+        n_fft: 1024
+        ref_db: 0.0
+        min_db_rel: -200.0
+        n_mels: "${dim_mel}"
+        fmin: 80
+        fmax: 7600
+  train:
+    max_epochs: 2000
+    # max_steps: "${train_steps}"
+    val_interval_epoch: 20
+    # val_interval_step: 10000
+    profiler: null
+    ckpt_log:
+        dir_root: logs
+        name_exp: default
+        name_version: version_-1
+  # eval_dataloaders:
+  #   - dev
+  #   - test
+"""

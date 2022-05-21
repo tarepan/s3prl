@@ -9,9 +9,9 @@
 
 import random
 from typing import List, Tuple, Optional
+from dataclasses import dataclass
 from pathlib import Path
 import pickle
-from dataclasses import dataclass
 
 from scipy.io import wavfile
 import librosa
@@ -23,14 +23,15 @@ from speechcorpusy import load_preset
 from speechdatasety.helper.archive import hash_args
 from speechdatasety.helper.archive import try_to_acquire_archive_contents, save_archive
 from speechdatasety.helper.adress import dataset_adress, generate_path_getter
-from speechdatasety.interface.speechcorpusy import ItemId
-
+from speechdatasety.interface.speechcorpusy import AbstractCorpus, ItemId
+from omegaconf import MISSING
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data.dataset import Dataset
-
 from resemblyzer import preprocess_wav, VoiceEncoder
-from .utils import logmelspectrogram, ConfMelspec, read_npy, write_npy
+
+from .preprocessing import logmelspectrogram, ConfMelspec
+from ..utils import read_npy, write_npy
 
 
 # Hardcoded resampling rate for upstream
@@ -110,68 +111,60 @@ def random_clip_index(full_length: int, clip_length: int) -> Tuple[int, int]:
     return start, end
 
 
-class VCTK_VCC2020Dataset(Dataset):
-    """dataset for a2a-vc-vctk task
+@dataclass
+class ConfWavMelEmbVcDataset:
+    """
+    Args:
+        adress_data_root: Root adress of datasets
+        num_target: Number of target utterances per single source utterance
+        num_dev_sample: Number of dev samples per single speaker
+        len_chunk: Length of datum chunk, no-chunking when None
+        train_dev_seed: Random seed, affect item order
+        n_shift
+        sr_for_mel - sampling rate of waveform for mel-spectrogram
+        mel - Configuration of mel-spectrogram
+    """
+    adress_data_root: str = MISSING
+    num_target: int = MISSING
+    num_dev_sample: int = MISSING
+    len_chunk: Optional[int] = MISSING
+    train_dev_seed: int = MISSING
+    n_shift: int = MISSING
+    sr_for_mel: int = MISSING
+    mel: ConfMelspec = ConfMelspec(
+        sampling_rate="${..sr_for_mel}",
+        hop_length="${..n_shift}",)
 
-    Training:   VCTK
-    Evaluation: VCC2020
+class WavMelEmbVcDataset(Dataset):
+    """Dataset containing wave/melSpec/Embedding/VcTuple.
     """
 
-    def __init__(self,
-        split: str,
-        adress_data_root: str,
-        fbank_config,
-        num_target: int,
-        corpus_train_dev: str,
-        corpus_test: str,
-        num_dev_sample: int,
-        len_chunk: Optional[int],
-        download: bool = False,
-        train_dev_seed=1337,
-        **kwargs
-        ):
+    def __init__(self, split: str, conf: ConfWavMelEmbVcDataset, corpus: AbstractCorpus):
         """
         Prepare voice conversion tuples (source-targets tuple), then generate speaker embedding.
 
         Data split: [train, dev] = [:-11, -5:, -10:-5] for each speaker
 
         Args:
-            split: "train" | "dev" | "test"
-            adress_data_root: Root adress of train/dev corpus (VCTK)
-            fbank_config: Filterback configurations
-            num_target: Number of target utterances per single source utterance
-            corpus_train_dev: Name of corpus for train/dev
-            corpus_test: Name of corpus for test
-            num_dev_sample: Number of dev samples per single speaker
-            len_chunk: Length of datum chunk, no-chunking when None
-            download: Whether to download train/dev corpus if needed
-            train_dev_seed: Random seed, affect item order
+            split - "train" | "dev" | "test"
+            conf - Configuration
+            corpus - Corpus
         """
         super().__init__()
         self.split = split
-        self.fbank_config = fbank_config
-        self._num_target = num_target
-        self._len_chunk = len_chunk
+        self._num_target = conf.num_target
+        self._len_chunk = conf.len_chunk
+        self._n_shift = conf.n_shift
+        self._sr_for_mel = conf.sr_for_mel
+        self.conf_mel = self.conf.mel
 
-        self.conf_mel = ConfMelspec(
-            sampling_rate=fbank_config["fs"],
-            n_fft=        fbank_config["n_fft"],
-            hop_length=   fbank_config["n_shift"],
-            ref_db=0.,
-            min_db_rel=-200.,
-            n_mels=       fbank_config["n_mels"],
-            fmin=         fbank_config["fmin"],
-            fmax=         fbank_config["fmax"],
-        )
-
-        corpus_name = corpus_train_dev if (split == 'train' or split == 'dev') else corpus_test
-        self._corpus = load_preset(corpus_name, root=adress_data_root, download=download)
+        self._corpus = corpus
 
         # Construct dataset adresses
         adress_archive, self._path_contents = dataset_adress(
-            adress_data_root,
+            conf.adress_data_root,
             self._corpus.__class__.__name__,
-            "wav_emb_mel_vctuple",
+            "wav_mel_emb_vctuple",
             f"{split}_{num_dev_sample}forDev_{num_target}targets",
         )
         self._get_path_wav = generate_path_getter("wav", self._path_contents)
@@ -268,7 +261,7 @@ class VCTK_VCC2020Dataset(Dataset):
         # Mel-spectrogram
         for item_id in tqdm(self._sources, desc="Preprocess/Melspectrogram", unit="utterance"):
             # Resampling for mel-spec generation
-            wave, _ = librosa.load(self._corpus.get_item_path(item_id), sr=self.fbank_config["fs"])
+            wave, _ = librosa.load(self._corpus.get_item_path(item_id), sr=self._sr_for_mel)
             # lmspc::(Time, Freq) - Mel-frequency Log(ref=1, Bel)-amplitude spectrogram
             lmspc = logmelspectrogram(wave=wave, conf=self.conf_mel)
             write_npy(self._get_path_mel(item_id), lmspc)
@@ -366,7 +359,7 @@ class VCTK_VCC2020Dataset(Dataset):
 
             # Waveform clipping
             wav_length = len(input_wav_resample)
-            effective_stride = self.fbank_config["n_shift"] * (FS / self.fbank_config["fs"])
+            effective_stride = self._n_shift * (FS / self._sr_for_mel)
             start_wave = max(0, round(effective_stride * start_mel))
             end_wave = min(wav_length, round(effective_stride * end_mel) + 1)
             input_wav_resample = input_wav_resample[start_wave : end_wave]

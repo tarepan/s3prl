@@ -20,23 +20,19 @@ import yaml
 import torch
 import torch.cuda
 import torch.nn as nn
-from torch.utils.data import DataLoader, DistributedSampler
-from torch.distributed import is_initialized
+from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from resemblyzer import preprocess_wav, VoiceEncoder
-from omegaconf import MISSING
+from omegaconf import OmegaConf, MISSING
 
-from .model import Model, ConfModel, ConfDecoderMainNet
-from .networks.encoder import ConfEncoder
-from .networks.conditioning import ConfGlobalCondNet
-from .networks.decoder import ConfDecoderPreNet
+from .model import Model, ConfModel
+from .data.datamodule import WavMelEmbVcData, ConfWavMelEmbVcData
+from .dataset import Stat
 
-from .dataset import VCTK_VCC2020Dataset, Stat
 from .utils import make_non_pad_mask
 from .utils import write_hdf5
-from .utils import logmelspc_to_linearspc, griffin_lim
 
 FS = 16000
 
@@ -99,113 +95,64 @@ class ConfOptim:
     sched_total_step: int = MISSING
 
 
+from dataclasses import dataclass
+
+@dataclass
+class ConfRunner:
+    """
+    Args:
+        expdir - Directory in which dev/test results are saved
+    """
+    dim_mel: int = MISSING
+    train_steps: int = MISSING
+    net: ConfModel = ConfModel()
+    optim: ConfOptim = ConfOptim()
+    data: ConfWavMelEmbVcData = ConfWavMelEmbVcData()
+    expdir: str = MISSING
+
 class DownstreamExpert(nn.Module):
     """S3PRL interface of a2a-vc-vctk
-
-    Dataset: `VCTK_VCC2020Dataset` (train/dev/test)
     """
 
-    def __init__(self, upstream_dim:int, upstream_rate, downstream_expert, expdir):
+    def __init__(self, upstream_dim: int, upstream_rate, downstream_expert, _, **kwargs):
         """
         Args:
-            upstream_dim: Feature dimension size of upstream output
-            upstream_rate:
+            upstream_dim - Feature dimension size of upstream output
+            upstream_rate
+            downstream_expert - the `downstream_expert` attribute of config
         """
         super().__init__()
-        
-        # basic settings
-        ## Used for dev/test result logging
-        self.expdir = expdir
-        ## Used for datasets and dev/test result vocoding
-        self.datarc = downstream_expert['datarc']
+
+        # conf generation (deleted in PL)
+        self.conf = OmegaConf.merge(
+            OmegaConf.structured(ConfRunner),
+            OmegaConf.create(downstream_expert)
+        )
+
+        # Datasets (moved in PL)
+        self._data = WavMelEmbVcData(self.conf.data)
+        self._data.prepare_data()
+        self._data.setup()
 
         # Time-directional up/down sampling ratio toward input series
-        _fs = self.datarc["fbank_config"]["fs"]
-        resample_ratio = _fs / self.datarc["fbank_config"]["n_shift"] * upstream_rate / FS
+        _fs = self.conf.data.dataset.sr_for_mel
+        n_shift = self.conf.data.dataset.n_shift
+        resample_ratio = _fs / n_shift * upstream_rate / FS
         print(f'[Downstream] - resample_ratio: {resample_ratio}')
-
-        # Not used in this class, but exists in `example` downstream
-        self.upstream_dim = upstream_dim
-        self.modelrc = downstream_expert['modelrc']
-
-        # Load datasets
-        self.train_dataset = VCTK_VCC2020Dataset('train', **self.datarc)
-        self.dev_dataset = VCTK_VCC2020Dataset('dev', **self.datarc)
-        self.test_dataset = VCTK_VCC2020Dataset('test', **self.datarc)
 
         # Load dataset-wise statistics
         # todo: Is this (AR normalization besed on only trainings, over speaker) good?
-        self.stats = self.train_dataset.acquire_spec_stat()
-
-        modelrc = downstream_expert['modelrc']
-        # Model configuration
-        conf = ConfModel(
-            dim_latent=modelrc["hidden_dim"],
-            encoder=ConfEncoder(
-                dim_i=upstream_dim,
-                causal=modelrc["enc_conv_causal"],
-                bidirectional=modelrc["enc_bidi"],
-                dim_o=modelrc["hidden_dim"],),
-            global_cond=ConfGlobalCondNet(
-                integration_type=modelrc["spk_emb_integration_type"],
-                dim_io=modelrc["hidden_dim"],
-                dim_global_cond=modelrc["spk_emb_dim"],),
-            # dec.dim_ar=,
-            # dec.dim_o=self.datarc["fbank_config"]["n_mels"]
-            dec_prenet=ConfDecoderPreNet(
-                dim_i=self.datarc["fbank_config"]["n_mels"],
-                dim_h_o=modelrc["prenet_dim"],
-                n_layers=modelrc["prenet_layers"],
-                dropout_rate=modelrc["prenet_dropout_rate"],),
-            dec_mainnet=ConfDecoderMainNet(
-                dim_i_cond=modelrc["hidden_dim"],
-                dim_i_ar=modelrc["prenet_dim"],
-                dim_h=modelrc["hidden_dim"],
-                num_layers=modelrc["lstmp_layers"],
-                dropout_rate=modelrc["lstmp_dropout_rate"],
-                layer_norm=modelrc["lstmp_layernorm"],
-                projection=True,
-                dim_o=self.datarc["fbank_config"]["n_mels"],),
-        )
+        stats = self._data.dataset_train.acquire_spec_stat()
 
         # define model and loss
         self.model = Model(
             resample_ratio=resample_ratio,
-            stats=self.stats,
-            conf=conf,
+            stats=stats,
+            conf=conf.net,
         )
-        self.objective = Loss(self.stats)
+        self.objective = Loss(stats)
         # Utterance embedding model for inference
         self.uttr_encoder = None
-
-    # Interface
-    def get_dataloader(self, split):
-        """S3PRL interface for data load"""
-        if split == 'train':
-            return self._get_train_dataloader(self.train_dataset)
-        elif split == 'dev':
-            return self._get_eval_dataloader(self.dev_dataset)
-        elif split == 'test':
-            return self._get_eval_dataloader(self.test_dataset)
-
-    def _get_train_dataloader(self, dataset):
-        """collate_fn should be implemented as dataset's method"""
-        sampler = DistributedSampler(dataset) if is_initialized() else None
-        return DataLoader(
-            dataset, batch_size=self.datarc['train_batch_size'],
-            shuffle=(sampler is None),
-            sampler=sampler,
-            num_workers=self.datarc['num_workers'],
-            collate_fn=dataset.collate_fn
-        )
-
-    def _get_eval_dataloader(self, dataset):
-        """collate_fn should be implemented as dataset's method"""
-        return DataLoader(
-            dataset, batch_size=self.datarc['eval_batch_size'],
-            shuffle=False, num_workers=self.datarc['num_workers'],
-            collate_fn=dataset.collate_fn
-        )
 
     # Interface
     def forward(self,
@@ -432,7 +379,7 @@ class DownstreamExpert(nn.Module):
         # Generate waveform w/ Griffin-Lim and save it
         if split in ["dev", "test"]:
             # Path preparation
-            root = Path(self.expdir) / str(global_step) / split
+            root = Path(self.conf.expdir) / str(global_step) / split
             hdf5_save_dir = root / "hdf5"
             wav_save_dir = root  / "wav"
             hdf5_save_dir.mkdir(exist_ok=True, parents=True)
@@ -461,7 +408,7 @@ class DownstreamExpert(nn.Module):
                 ## save
                 # write(
                 #     wav_save_path,
-                #     self.datarc["fbank_config"]["fs"],
+                #     <sampling_rate>,
                 #     (y * np.iinfo(np.int16).max).astype(np.int16),
                 # )
         return []
@@ -469,3 +416,13 @@ class DownstreamExpert(nn.Module):
     @property
     def device(self):
         return next(self.parameters()).device
+
+    # Interface
+    def get_dataloader(self, split: str) -> DataLoader:
+        """(S3PRL API) Generate data loader."""
+        if split == "train":
+            return self._data.train_dataloader()
+        elif split == "dev":
+            return self._data.val_dataloader()
+        elif split == "test":
+            return self._data.test_dataloader()
