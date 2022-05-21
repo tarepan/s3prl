@@ -27,7 +27,7 @@ from torch.optim.lr_scheduler import LambdaLR
 from resemblyzer import preprocess_wav, VoiceEncoder
 from omegaconf import OmegaConf, MISSING
 
-from .model import Model, ConfModel
+from .networks.tacovc import TacoVCNet, ConfTacoVCNet
 from .data.datamodule import WavMelEmbVcData, ConfWavMelEmbVcData
 from .dataset import Stat
 
@@ -105,7 +105,7 @@ class ConfRunner:
     """
     dim_mel: int = MISSING
     train_steps: int = MISSING
-    net: ConfModel = ConfModel()
+    net: ConfTacoVCNet = ConfTacoVCNet()
     optim: ConfOptim = ConfOptim()
     data: ConfWavMelEmbVcData = ConfWavMelEmbVcData()
     expdir: str = MISSING
@@ -145,7 +145,7 @@ class DownstreamExpert(nn.Module):
         stats = self._data.dataset_train.acquire_spec_stat()
 
         # define model and loss
-        self.model = Model(
+        self.model = TacoVCNet(
             resample_ratio=resample_ratio,
             stats=stats,
             conf=conf.net,

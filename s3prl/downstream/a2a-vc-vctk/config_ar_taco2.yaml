@@ -30,7 +30,14 @@ downstream_expert:
       encoder:
         dim_i=upstream_dim, #############################
         causal: False
+        num_conv_layers: 3
+        conv_dim_c: 512
+        conv_size_k: 5
+        conv_batch_norm: True
+        conv_residual: False
+        conv_dropout_rate: 0.5
         bidirectional: True
+        num_rnn_layers: 1
       global_cond:
         integration_type: concat # add or concat
         dim_global_cond: 256
@@ -38,6 +45,7 @@ downstream_expert:
         n_layers: 2
         dropout_rate: 0.5
       dec_mainnet:
+        dim_h: 1024
         num_layers: 2
         dropout_rate: 0.2
         layer_norm: False

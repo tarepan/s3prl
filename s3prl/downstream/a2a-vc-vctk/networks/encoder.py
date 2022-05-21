@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 from extorch import Conv1dEx
-
+from omegaconf import MISSING
 
 # The follow section is related to Tacotron2
 # Reference: https://github.com/espnet/espnet/blob/master/espnet/nets/pytorch_backend/tacotron2
@@ -35,17 +35,17 @@ class ConfEncoder:
         num_rnn_layers: The number of RNN layers
         dim_o: Dimension size of output, equal to RNN hidden size
     """
-    dim_i: int
-    causal: bool
-    num_conv_layers: int = 3
-    conv_dim_c: int = 512
-    conv_size_k: int = 5
-    conv_batch_norm: bool = True
-    conv_residual: bool = False
-    conv_dropout_rate: float = 0.5
-    bidirectional: bool = True
-    num_rnn_layers: int = 1
-    dim_o: int = 512
+    dim_i: int = MISSING
+    causal: bool = MISSING
+    num_conv_layers: int = MISSING
+    conv_dim_c: int = MISSING
+    conv_size_k: int = MISSING
+    conv_batch_norm: bool = MISSING
+    conv_residual: bool = MISSING
+    conv_dropout_rate: float = MISSING
+    bidirectional: bool = MISSING
+    num_rnn_layers: int = MISSING
+    dim_o: int = MISSING
     
 class Taco2Encoder(torch.nn.Module):
     """Encoder module of the Tacotron2 TTS model.

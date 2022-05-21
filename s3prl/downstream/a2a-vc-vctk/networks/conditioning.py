@@ -8,19 +8,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
 from extorch import Conv1dEx
-
+from omegaconf import MISSING
 
 @dataclass
 class ConfGlobalCondNet:
     """
     Args:
-        integration_type - Type of input-conditioning integration
+        integration_type - Type of input-conditioning integration ("add" | "concat")
         dim_io - Dimension size of input/output
         dim_global_cond - Dimension size of global conditioning vector
     """
-    integration_type: str # "add" | "concat"
-    dim_io: int
-    dim_global_cond: int
+    integration_type: str = MISSING
+    dim_io: int = MISSING
+    dim_global_cond: int = MISSING
 
 class GlobalCondNet(nn.Module):
     """Global conditioning

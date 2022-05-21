@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from omegaconf import MISSING
 
 @dataclass
 class ConfDecoderPreNet:
@@ -18,10 +18,10 @@ class ConfDecoderPreNet:
         n_layers - Number of FC layer
         dropout_rate: float=0.5    
     """
-    dim_i: int
-    dim_h_o: int
-    n_layers: int
-    dropout_rate: float
+    dim_i: int = MISSING
+    dim_h_o: int = MISSING
+    n_layers: int = MISSING
+    dropout_rate: float = MISSING
 
 class Taco2Prenet(nn.Module):
     """Prenet module for decoder of Tacotron2.

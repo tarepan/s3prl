@@ -16,35 +16,61 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .dataset import Stat
-from .networks.encoder import Taco2Encoder, ConfEncoder
-from .networks.conditioning import GlobalCondNet, ConfGlobalCondNet
-from .networks.decoder import Taco2Prenet, ConfDecoderPreNet, ExLSTMCell
+from .encoder import Taco2Encoder, ConfEncoder
+from .conditioning import GlobalCondNet, ConfGlobalCondNet
+from .decoder import Taco2Prenet, ConfDecoderPreNet, ExLSTMCell
 
-
-
-################################################################################
 
 @dataclass
 class ConfDecoderMainNet:
-    dim_i_cond: int # Dimension size of conditioning input
-    dim_i_ar: int   # Dimension size of processed AR input
-    dim_h: int    # Dimension size of RNN hidden units
-    num_layers: int
-    dropout_rate: float
-    layer_norm: bool
-    projection: bool
-    dim_o: int    # Dimension size of output
+    """
+    Configuration of TacoVC Decoder MainNet.
+
+    Args:
+        dim_i_cond - Dimension size of conditioning input
+        dim_i_ar - Dimension size of processed AR input
+        dim_h - Dimension size of RNN hidden units
+        num_layers - The number of RNN layers
+        dropout_rate - RNN dropout rate
+        layer_norm - Whether to use layer normalization in RNN
+        projection - Whether LSTM or LSTMP
+        dim_o - Dimension size of output
+    """
+    dim_i_cond: int = MISSING
+    dim_i_ar: int = MISSING
+    dim_h: int = MISSING
+    num_layers: int = MISSING
+    dropout_rate: float = MISSING
+    layer_norm: bool = MISSING
+    projection: bool = MISSING
+    dim_o: int = MISSING
 
 @dataclass
-class ConfModel:
-    """Configuration of Model"""
-    dim_latent: int       # Dimension size of latent, equal to o_encoder and i_decoder (preserved for future local sync)
-    encoder: ConfEncoder
-    global_cond: ConfGlobalCondNet
-    dec_prenet: ConfDecoderPreNet
-    dec_mainnet: ConfDecoderMainNet
+class ConfTacoVCNet:
+    """
+    Configuration of TacoVCNet.
 
-class Model(nn.Module):
+    Args:
+        dim_latent - Dimension size of latent between Encoder and Decoder
+        dim_processed_ar - Dimension size of processed Decoder AR feature
+        dim_o - Dimension size of output acoustic feature
+    """
+    dim_latent: int = MISSING
+    dim_processed_ar: int = MISSING
+    dim_o: int  = MISSING
+    encoder: ConfEncoder = ConfEncoder(
+        dim_o="${..dim_latent}",)
+    global_cond: ConfGlobalCondNet = ConfGlobalCondNet(
+        dim_io="${..dim_latent}",)
+    dec_prenet: ConfDecoderPreNet = ConfDecoderPreNet(
+        dim_i="${..dim_o}",
+        dim_h_o="${..dim_processed_ar}",)
+    dec_mainnet: ConfDecoderMainNet = ConfDecoderMainNet(
+        dim_i_cond="${..dim_latent}",
+        dim_i_ar="${..dim_processed_ar}",
+        dim_o="${..dim_o}")
+
+class TacoVCNet(nn.Module):
     """
     S3PRL-VC model.
 
@@ -52,12 +78,12 @@ class Model(nn.Module):
     segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1LSTM-cat_(z_t, AR-norm-(segFC-ReLU-DO)xN)-(1uniLSTM[-LN][-DO]-segFC-Tanh)xL-segFC
     """
 
-    def __init__(self, resample_ratio, stats: Stat, conf: ConfModel):
+    def __init__(self, resample_ratio, stats: Stat, conf: ConfTacoVCNet):
         """
         Args:
             stats (`Stat`): Spectrum statistics container for normalization
         """
-        super(Model, self).__init__()
+        super().__init__()
         self.conf = conf
         self.resample_ratio = resample_ratio
 
