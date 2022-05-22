@@ -84,7 +84,6 @@ downstream_expert:
       num_dev_sample: 5
       len_chunk: null
       # clip_length_mel: null # `len_chunk` ######################################
-      train_dev_seed: 1337
       n_shift: "${mel_hop_length}"
       sr_for_unit: "${sr_for_unit}"
       sr_for_mel: "${sr_for_mel}"

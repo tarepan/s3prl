@@ -129,7 +129,6 @@ class ConfWavMelEmbVcDataset:
         num_target: Number of target utterances per single source utterance
         num_dev_sample: Number of dev samples per single speaker
         len_chunk: Length of datum chunk, no-chunking when None
-        train_dev_seed: Random seed, affect item order
         n_shift
         sr_for_unit - sampling rate of waveform for unit
         sr_for_mel - sampling rate of waveform for mel-spectrogram
@@ -139,7 +138,6 @@ class ConfWavMelEmbVcDataset:
     num_target: int = MISSING
     num_dev_sample: int = MISSING
     len_chunk: Optional[int] = None
-    train_dev_seed: int = MISSING
     n_shift: int = MISSING
     sr_for_unit: int = MISSING
     sr_for_mel: int = MISSING
@@ -212,8 +210,6 @@ class WavMelEmbVcDataset(Dataset):
                 tuples_spk = list(map(lambda item_id: [item_id, item_id], utts_spk))
                 ## Data split: [0, -2X] is for train, [-X:] is for dev for each speaker
                 self._vc_tuples.extend(tuples_spk[:2*idx_dev] if is_train else tuples_spk[idx_dev:])
-            random.seed(conf.train_dev_seed)
-            random.shuffle(self._vc_tuples)
             self._sources = list(map(lambda vc_tuple: vc_tuple[0], self._vc_tuples))
             self._targets = list(map(lambda vc_tuple: vc_tuple[1], self._vc_tuples))
         elif split == 'test':
