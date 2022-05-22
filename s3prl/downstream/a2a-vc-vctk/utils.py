@@ -15,8 +15,6 @@ import os
 import fnmatch
 import h5py
 import numpy as np
-import librosa
-import librosa.feature
 import logging
 import torch
 
@@ -298,68 +296,3 @@ def write_hdf5(hdf5_name, hdf5_path, write_data, is_overwrite=True):
     hdf5_file.create_dataset(hdf5_path, data=write_data)
     hdf5_file.flush()
     hdf5_file.close()
-
-################################################################################
-
-# The following function are based on:
-# https://github.com/espnet/espnet/blob/master/utils/convert_fbank_to_wav.py
-
-EPS = 1e-10
-
-def logmelspc_to_linearspc(lmspc, fs, n_mels, n_fft, fmin=None, fmax=None):
-    """Convert log Mel filterbank to linear spectrogram.
-
-    Args:
-        lmspc (ndarray): Log Mel filterbank (T, n_mels).
-        fs (int): Sampling frequency.
-        n_mels (int): Number of mel basis.
-        n_fft (int): Number of FFT points.
-        f_min (int, optional): Minimum frequency to analyze.
-        f_max (int, optional): Maximum frequency to analyze.
-
-    Returns:
-        ndarray: Linear spectrogram (T, n_fft // 2 + 1).
-
-    """
-    assert lmspc.shape[1] == n_mels
-    fmin = 0 if fmin is None else fmin
-    fmax = fs / 2 if fmax is None else fmax
-    mspc = np.power(10.0, lmspc)
-    mel_basis = librosa.filters.mel(fs, n_fft, n_mels, fmin, fmax)
-    inv_mel_basis = np.linalg.pinv(mel_basis)
-    spc = np.maximum(EPS, np.dot(inv_mel_basis, mspc.T).T)
-
-    return spc
-
-
-def griffin_lim(spc, n_fft, n_shift, win_length, window="hann", n_iters=100):
-    """Convert linear spectrogram into waveform using Griffin-Lim.
-
-    Args:
-        spc (ndarray): Linear spectrogram (T, n_fft // 2 + 1).
-        n_fft (int): Number of FFT points.
-        n_shift (int): Shift size in points.
-        win_length (int): Window length in points.
-        window (str, optional): Window function type.
-        n_iters (int, optionl): Number of iterations of Griffin-Lim Algorithm.
-
-    Returns:
-        ndarray: Reconstructed waveform (N,).
-
-    """
-    # assert the size of input linear spectrogram
-    assert spc.shape[1] == n_fft // 2 + 1
-
-    # use librosa's fast Grriffin-Lim algorithm
-    spc = np.abs(spc.T)
-    y = librosa.griffinlim(
-        S=spc,
-        n_iter=n_iters,
-        hop_length=n_shift,
-        win_length=win_length,
-        window=window,
-        center=True if spc.shape[1] > 1 else False,
-    )
-
-    return y
-
