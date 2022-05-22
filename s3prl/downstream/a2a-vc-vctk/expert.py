@@ -26,8 +26,6 @@ from omegaconf import OmegaConf, MISSING
 from .model import TacoVC, ConfTacoVC
 from .data.datamodule import WavMelEmbVcData, ConfWavMelEmbVcData
 from .data.dataset import Stat
-
-from .utils import make_non_pad_mask
 from .utils import write_hdf5
 
 
