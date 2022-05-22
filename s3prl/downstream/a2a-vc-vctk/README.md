@@ -31,7 +31,7 @@ Jump to ☞ [![Open In Colab](https://colab.research.google.com/assets/colab-bad
 ## How to Use
 
 ### 1. Install
-First you should set up `s3prl` itself (follow instructions in root README), then coutinue.  
+First you should set up `s3prl` itself (follow instructions in root README), then execute the instruction below.  
 
 ```bash
 cd <root-to-s3prl>/s3prl/downstream/a2a-vc-vctk
@@ -51,8 +51,6 @@ pip install -r requirements.txt
 cd ../..
 ./downstream/a2a-vc-vctk/vc_train.sh <upstream> downstream/a2a-vc-vctk/config_ar_taco2.yaml <tag>
 ```
-
-Waveforms w/ Griffin-Lim are generated intermittently @ `<root-to-s3prl>/s3prl/result/downstream/a2a_vc_vctk_<tag>_<upstream>/<step>/test/wav/`
 
 ### 4. Evaluation: Waveform synthesis & objective metrics
 
@@ -96,27 +94,5 @@ If the command fails, please make sure there are trained results in `result/down
 }
 ```
 
-## Contact
-Development: [Wen-Chin Huang](https://github.com/unilight) @ Nagoya University (2021).  
-If you have any questions, please open an issue, or contact through email: wen.chinhuang@g.sp.m.is.nagoya-u.ac.jp
-
-
 [paper]: https://arxiv.org/abs/2110.06280
 [notebook]: https://colab.research.google.com/github/tarepan/s3prl/blob/master/s3prl/downstream/a2a-vc-vctk/training.ipynb
-
-#### Decoding
-
-After model training finishes (by followingthe [Training](#training) section), use the following script to perform custom decoding:
-
-```
-cd <root-to-s3prl>/s3prl
-./downstream/a2a-vc-vctk/custom_decode.sh <tag> <upstream> <ep> <vocoder_dir> <list_path>
-```
-
-For example:
-
-```
-./downstream/a2a-vc-vctk/custom_decode.sh ar_taco2 vq_wav2vec 50000 downstream/a2a-vc-vctk/hifigan_vctk downstream/a2a-vc-vctk/data/lists/custom_eval_wenchin.yaml
-```
-
-After the decoding process ends, you should be able to find the generated files in `result/downstream/a2a_vc_vctk_<tag>_<upstream>/custom_test/`.
