@@ -50,6 +50,7 @@ class ConfDownstreamExpert:
     Configuration of TacoVC trainer `DownstreamExpert`.
 
     Args:
+        sr_for_unit - Sampling rate of waveform for unit generation
         dim_unit - Dimension size of unit
         upstream_rate - Rate of upstream output [unit/sec]
         dim_mel - Feature dimension size of mel-spectrogram
@@ -57,6 +58,7 @@ class ConfDownstreamExpert:
         mel_hop_length - STFT hop length of mel-spectrogram
         train_steps - The number of training steps
     """
+    sr_for_unit: int = MISSING
     dim_unit: int = MISSING
     upstream_rate: int = MISSING
     dim_mel: int = MISSING

@@ -47,9 +47,6 @@ def write_npy(p: Path, d):
     np.save(p, d)
 #####################################################
 
-# Hardcoded resampling rate for upstream
-FS = 16000
-
 
 def split_jvs(utterances: List[ItemId]) -> (List[ItemId], List[ItemId]):
     """Split JVS corpus items into two groups."""
@@ -134,15 +131,17 @@ class ConfWavMelEmbVcDataset:
         len_chunk: Length of datum chunk, no-chunking when None
         train_dev_seed: Random seed, affect item order
         n_shift
+        sr_for_unit - sampling rate of waveform for unit
         sr_for_mel - sampling rate of waveform for mel-spectrogram
         mel - Configuration of mel-spectrogram
     """
     adress_data_root: str = MISSING
     num_target: int = MISSING
     num_dev_sample: int = MISSING
-    len_chunk: Optional[int] = MISSING
+    len_chunk: Optional[int] = None
     train_dev_seed: int = MISSING
     n_shift: int = MISSING
+    sr_for_unit: int = MISSING
     sr_for_mel: int = MISSING
     mel: ConfMelspec = ConfMelspec(
         sampling_rate="${..sr_for_mel}",
@@ -168,6 +167,7 @@ class WavMelEmbVcDataset(Dataset):
         self._num_target = conf.num_target
         self._len_chunk = conf.len_chunk
         self._n_shift = conf.n_shift
+        self._sr_for_unit = conf.sr_for_unit
         self._sr_for_mel = conf.sr_for_mel
         self.conf_mel = conf.mel
 
@@ -262,7 +262,7 @@ class WavMelEmbVcDataset(Dataset):
         # Waveform resampling for upstream input
         # Low sampling rate is enough because waveforms are finally encoded into compressed feature.
         for item_id in tqdm(self._sources, desc="Preprocess/Resampling", unit="utterance"):
-            wave, _ = librosa.load(self._corpus.get_item_path(item_id), sr=FS)
+            wave, _ = librosa.load(self._corpus.get_item_path(item_id), sr=self._sr_for_unit)
             write_npy(self._get_path_wav(item_id), wave)
 
         # Embedding
@@ -343,7 +343,7 @@ class WavMelEmbVcDataset(Dataset):
         """Load waveforms, mel-specs, speaker embeddings and data identities.
 
         Returns:
-            input_wav_resample (ndarray): Waveform used by Upstream (should be sr=FS)
+            input_wav_resample (ndarray): Waveform for unit series generation
             lmspc (ndarray[Time, Freq]): Non-standardized log-mel spectrogram
             spk_emb: Averaged self|target speaker embeddings
             vc_identity (str, str, str): (target_speaker, source_speaker, utterance_name)
@@ -373,7 +373,7 @@ class WavMelEmbVcDataset(Dataset):
 
             # Waveform clipping
             wav_length = len(input_wav_resample)
-            effective_stride = self._n_shift * (FS / self._sr_for_mel)
+            effective_stride = self._n_shift * (self._sr_for_unit / self._sr_for_mel)
             start_wave = max(0, round(effective_stride * start_mel))
             end_wave = min(wav_length, round(effective_stride * end_mel) + 1)
             input_wav_resample = input_wav_resample[start_wave : end_wave]
