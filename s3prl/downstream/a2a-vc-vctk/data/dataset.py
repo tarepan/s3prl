@@ -31,8 +31,21 @@ from torch.utils.data.dataset import Dataset
 from resemblyzer import preprocess_wav, VoiceEncoder
 
 from .preprocessing import logmelspectrogram, ConfMelspec
-from ..utils import read_npy, write_npy
 
+
+#####################################################
+# Utils
+
+def read_npy(p: Path):
+    """Read .npy from path without `.npy`"""
+    # Change file name by appending `.npy` at tail.
+    return np.load(p.with_name(f"{p.name}.npy"))
+
+def write_npy(p: Path, d):
+    """Write .npy from path"""
+    p.parent.mkdir(exist_ok=True, parents=True)
+    np.save(p, d)
+#####################################################
 
 # Hardcoded resampling rate for upstream
 FS = 16000
