@@ -20,15 +20,23 @@ scheduler:
 
 # True config
 downstream_expert:
+  dim_unit: 640
+  upstream_rate: 160
   dim_mel: 80
+  sr_for_mel: 24000
+  mel_hop_length: 256
   train_steps: 50000
   model:
+    sr_for_unit: 16000
+    unit_hop_length: ${upstream_rate}
+    sr_for_mel: "${sr_for_mel}"
+    mel_hop_length: "${mel_hop_length}"
     net:
       dim_latent: 1024
       dim_processed_ar: 256
       dim_o: "${dim_mel}"
       encoder:
-        dim_i=upstream_dim, #############################
+        dim_i: "${dim_unit}"
         causal: False
         num_conv_layers: 3
         conv_dim_c: 512
@@ -39,7 +47,7 @@ downstream_expert:
         bidirectional: True
         num_rnn_layers: 1
       global_cond:
-        integration_type: concat # add or concat
+        integration_type: concat
         dim_global_cond: 256
       dec_prenet:
         n_layers: 2
@@ -76,8 +84,8 @@ downstream_expert:
       len_chunk: null
       # clip_length_mel: null # `len_chunk` ######################################
       train_dev_seed: 1337
-      n_shift: 256
-      sr_for_mel: 24000
+      n_shift: "${mel_hop_length}"
+      sr_for_mel: "${sr_for_mel}"
       mel:
         n_fft: 1024
         ref_db: 0.0
@@ -92,9 +100,9 @@ downstream_expert:
     # val_interval_step: 10000
     profiler: null
     ckpt_log:
-        dir_root: logs
-        name_exp: default
-        name_version: version_-1
+        dir_root: S3PRL_VC
+        name_exp: a2a
+        name_version: default
   # eval_dataloaders:
   #   - dev
   #   - test

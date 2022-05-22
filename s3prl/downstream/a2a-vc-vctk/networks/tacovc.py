@@ -10,12 +10,13 @@
 
 from warnings import warn
 from dataclasses import dataclass
+from typing import Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .dataset import Stat
+from ..data.dataset import Stat
 from .encoder import Taco2Encoder, ConfEncoder
 from .conditioning import GlobalCondNet, ConfGlobalCondNet
 from .decoder import Taco2Prenet, ConfDecoderPreNet, ExLSTMCell
@@ -78,7 +79,7 @@ class TacoVCNet(nn.Module):
     segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1LSTM-cat_(z_t, AR-norm-(segFC-ReLU-DO)xN)-(1uniLSTM[-LN][-DO]-segFC-Tanh)xL-segFC
     """
 
-    def __init__(self, resample_ratio, stats: Stat, conf: ConfTacoVCNet):
+    def __init__(self, resample_ratio: float, conf: ConfTacoVCNet, stats: Optional[Stat]):
         """
         Args:
             stats (`Stat`): Spectrum statistics container for normalization
@@ -95,8 +96,8 @@ class TacoVCNet(nn.Module):
 
         # Decoder
         ## PreNet: (segFC-ReLU-DO)xN
-        self.register_buffer("target_mean", torch.from_numpy(stats.mean_).float())
-        self.register_buffer("target_scale", torch.from_numpy(stats.scale_).float())
+        if stats:
+            self.register_spec_stat(stats.mean_, stats.scale_)
         self.prenet = Taco2Prenet(conf.dec_prenet)
         ## MainNet: LSTMP + linear projection
         conf = conf.dec_mainnet
@@ -118,6 +119,19 @@ class TacoVCNet(nn.Module):
         self.dim_o = conf.dim_o
         ## PostNet: None
         pass
+
+    def register_spec_stat(self, mean: np.ndarray, scale: np.ndarray):
+        """
+        Register spectram statistics as model state.
+
+        Args:
+            mean -  frequencyBand-wise mean 
+            scale - frequencyBand-wise standard deviation
+        """
+        # buffer is part of state_dict (saved by PyTorch functions)
+        self.register_buffer("target_mean", torch.from_numpy(mean).float())
+        self.register_buffer("target_scale", torch.from_numpy(scale).float())
+        
 
     def forward(self, features, lens, spk_emb, targets = None):
         """Convert unit sequence into acoustic feature sequence.
