@@ -229,18 +229,6 @@ def make_non_pad_mask(lengths, xs=None, length_dim=-1):
 
 ################################################################################
 
-def read_npy(p: Path):
-    """Read .npy from path without `.npy`"""
-    # Change file name by appending `.npy` at tail.
-    return np.load(p.with_name(f"{p.name}.npy"))
-
-def write_npy(p: Path, d):
-    """Write .npy from path"""
-    p.parent.mkdir(exist_ok=True, parents=True)
-    np.save(p, d)
-
-################################################################################
-
 # The following function are based on:
 # https://github.com/kan-bayashi/ParallelWaveGAN/blob/master/parallel_wavegan/utils/utils.py
 

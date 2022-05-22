@@ -13,7 +13,7 @@ from resemblyzer import preprocess_wav, VoiceEncoder
 
 from .networks.tacovc import TacoVCNet, ConfTacoVCNet
 from .data.dataset import Stat
-from .utils import make_non_pad_mask, write_hdf5
+from .utils import make_non_pad_mask
 
 
 class Loss(nn.Module):
