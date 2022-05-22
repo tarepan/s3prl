@@ -156,16 +156,17 @@ class WavMelEmbVcDataset(Dataset):
         self._len_chunk = conf.len_chunk
         self._n_shift = conf.n_shift
         self._sr_for_mel = conf.sr_for_mel
-        self.conf_mel = self.conf.mel
+        self.conf_mel = conf.mel
 
         self._corpus = corpus
+        corpus_name = self._corpus.__class__.__name__
 
         # Construct dataset adresses
         adress_archive, self._path_contents = dataset_adress(
             conf.adress_data_root,
             self._corpus.__class__.__name__,
             "wav_mel_emb_vctuple",
-            f"{split}_{num_dev_sample}forDev_{num_target}targets",
+            f"{split}_{conf.num_dev_sample}forDev_{conf.num_target}targets",
         )
         self._get_path_wav = generate_path_getter("wav", self._path_contents)
         self._get_path_emb = generate_path_getter("emb", self._path_contents)
@@ -191,14 +192,14 @@ class WavMelEmbVcDataset(Dataset):
             if corpus_name == "JVS":
                 all_utterances = split_jvs(all_utterances)[0]
             is_train = split == 'train'
-            idx_dev = -1*num_dev_sample
+            idx_dev = -1*conf.num_dev_sample
             for spk in set(map(lambda item_id: item_id.speaker, all_utterances)):
                 utts_spk = filter(lambda item_id: item_id.speaker == spk, all_utterances)
                 # tuples_spk = [[X#1, X#1], [X#2, X#2], ..., [X#n, X#n]]
                 tuples_spk = list(map(lambda item_id: [item_id, item_id], utts_spk))
                 ## Data split: [0, -2X] is for train, [-X:] is for dev for each speaker
                 self._vc_tuples.extend(tuples_spk[:2*idx_dev] if is_train else tuples_spk[idx_dev:])
-            random.seed(train_dev_seed)
+            random.seed(conf.train_dev_seed)
             random.shuffle(self._vc_tuples)
             self._sources = list(map(lambda vc_tuple: vc_tuple[0], self._vc_tuples))
             self._targets = list(map(lambda vc_tuple: vc_tuple[1], self._vc_tuples))
@@ -234,7 +235,7 @@ class WavMelEmbVcDataset(Dataset):
 
         # Load vc tuples in the file
         if split == 'test':
-            self._vc_tuples = load_vc_tuples(self._path_contents, num_target)
+            self._vc_tuples = load_vc_tuples(self._path_contents, conf.num_target)
 
         # Report
         print(f"[Dataset] - number of data for {split}: {len(self._vc_tuples)}")

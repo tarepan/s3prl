@@ -12,9 +12,11 @@ from warnings import warn
 from dataclasses import dataclass
 from typing import Optional
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from omegaconf import MISSING
 
 from ..data.dataset import Stat
 from .encoder import Taco2Encoder, ConfEncoder

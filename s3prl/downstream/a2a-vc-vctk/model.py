@@ -1,8 +1,9 @@
 """TacoVC model"""
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
 
+import numpy as np
 import torch
 import torch.nn as nn
 from omegaconf import MISSING
@@ -117,7 +118,7 @@ class TacoVC(nn.Module):
         resample_ratio = mel_per_sec / unit_per_sec
 
         # define model and loss
-        self.model = Model(
+        self.model = TacoVCNet(
             resample_ratio=resample_ratio,
             conf=conf.net,
             stats=stats,
@@ -127,8 +128,6 @@ class TacoVC(nn.Module):
         # Utterance embedding model for inference
         self.uttr_encoder = None
 
-    def 
-    # Interface
     def forward(self,
                 split,
                 input_features,
@@ -139,7 +138,7 @@ class TacoVC(nn.Module):
                 vc_ids,
                 records,
                 **kwargs):
-        """S3PRL interface for calculation.
+        """(PL API) Forward a batch.
 
         Args:
             split: mode

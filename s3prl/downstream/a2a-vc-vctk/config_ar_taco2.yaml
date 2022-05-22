@@ -20,7 +20,7 @@ scheduler:
 
 # True config
 downstream_expert:
-  dim_unit: 640
+  dim_unit: 512
   upstream_rate: 160
   dim_mel: 80
   sr_for_mel: 24000
@@ -28,7 +28,7 @@ downstream_expert:
   train_steps: 50000
   model:
     sr_for_unit: 16000
-    unit_hop_length: ${upstream_rate}
+    unit_hop_length: "${upstream_rate}"
     sr_for_mel: "${sr_for_mel}"
     mel_hop_length: "${mel_hop_length}"
     net:
@@ -106,4 +106,3 @@ downstream_expert:
   # eval_dataloaders:
   #   - dev
   #   - test
-"""

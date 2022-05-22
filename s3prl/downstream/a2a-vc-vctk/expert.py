@@ -11,7 +11,7 @@ import os
 import numpy as np
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from scipy.io.wavfile import write
 from tqdm import tqdm
@@ -25,7 +25,7 @@ from omegaconf import OmegaConf, MISSING
 
 from .model import TacoVC, ConfTacoVC
 from .data.datamodule import WavMelEmbVcData, ConfWavMelEmbVcData
-from .dataset import Stat
+from .data.dataset import Stat
 
 from .utils import make_non_pad_mask
 from .utils import write_hdf5

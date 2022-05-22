@@ -8,7 +8,6 @@ import torch
 from torch.utils.data import random_split, DataLoader
 from pytorch_lightning import LightningDataModule
 from omegaconf import MISSING
-from speechcorpusy.interface import AbstractCorpus
 from speechcorpusy import load_preset
 
 from .corpora import load_corpora, ConfCorpora
@@ -31,7 +30,7 @@ class ConfWavMelEmbVcData:
 class WavMelEmbVcData:
     """PL-DataModule of wave/melspec/embedding/VcTuple.
     """
-    def __init__(self, conf: ConfWavMelEmbVcData, corpus: AbstractCorpus):
+    def __init__(self, conf: ConfWavMelEmbVcData):
         super().__init__()
         self._conf = conf
 
