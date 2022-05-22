@@ -18,7 +18,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from omegaconf import MISSING
 
-from ..data.dataset import Stat
 from .encoder import Taco2Encoder, ConfEncoder
 from .conditioning import GlobalCondNet, ConfGlobalCondNet
 from .decoder import Taco2Prenet, ConfDecoderPreNet, ExLSTMCell
@@ -75,16 +74,24 @@ class ConfTacoVCNet:
 
 class TacoVCNet(nn.Module):
     """
-    S3PRL-VC model.
+    S3PRL-VC TacoVC network.
 
     `Taco2-AR`: segFC-3Conv-1LSTM-cat_(z_t, AR-segFC)-NuniLSTM-segFC-segLinear
     segFC512-(Conv1d512_k5s1-BN-ReLU-DO_0.5)x3-1LSTM-cat_(z_t, AR-norm-(segFC-ReLU-DO)xN)-(1uniLSTM[-LN][-DO]-segFC-Tanh)xL-segFC
     """
 
-    def __init__(self, resample_ratio: float, conf: ConfTacoVCNet, stats: Optional[Stat]):
+    def __init__(self,
+        resample_ratio: float,
+        conf: ConfTacoVCNet,
+        mean: Optional[np.ndarray],
+        scale: Optional[np.ndarray],
+    ):
         """
         Args:
-            stats (`Stat`): Spectrum statistics container for normalization
+            resample_ratio - conditioning series resampling ratio
+            conf - Configuration
+            mean - FrequencyBand-wise mean
+            scale - FrequencyBand-wise standard deviation
         """
         super().__init__()
         self.conf = conf
@@ -98,8 +105,10 @@ class TacoVCNet(nn.Module):
 
         # Decoder
         ## PreNet: (segFC-ReLU-DO)xN
-        if stats:
-            self.register_spec_stat(stats.mean_, stats.scale_)
+        if ((mean is None) and (scale is not None)) or ((mean is not None) and (scale is None)):
+            raise Exception("Should be 'both mean/scale exist' OR 'both mean/scale not exist'")
+        elif (mean is not None) and (scale is not None):
+            self.register_spec_stat(mean, scale)
         self.prenet = Taco2Prenet(conf.dec_prenet)
         ## MainNet: LSTMP + linear projection
         conf = conf.dec_mainnet

@@ -121,7 +121,8 @@ class TacoVC(nn.Module):
         self.model = TacoVCNet(
             resample_ratio=resample_ratio,
             conf=conf.net,
-            stats=stats,
+            mean=stats.mean_ if stats else None,
+            scale=stats.scale_ if stats else None,
         )
         self.objective = Loss(stats)
 
