@@ -9,10 +9,10 @@ from torch.utils.data import random_split, DataLoader
 from pytorch_lightning import LightningDataModule
 from omegaconf import MISSING
 from speechcorpusy import load_preset
+from speechdatasety.helper.loader import LoaderGenerator, ConfLoader
 
 from .corpora import load_corpora, ConfCorpora
 from .dataset import WavMelEmbVcDataset, ConfWavMelEmbVcDataset
-from .loader import LoaderGenerator, ConfLoader
 
 
 @dataclass
