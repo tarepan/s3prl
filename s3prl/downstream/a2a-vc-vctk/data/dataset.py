@@ -48,7 +48,7 @@ def write_npy(p: Path, d):
 #####################################################
 
 
-def split_jvs(utterances: List[ItemId]) -> (List[ItemId], List[ItemId]):
+def speaker_split_jvs(utterances: List[ItemId]) -> (List[ItemId], List[ItemId]):
     """Split JVS corpus items into two groups."""
 
     anothers_spk = ["95", "96", "98", "99"]
@@ -186,7 +186,7 @@ class WavMelEmbVcDataset(Dataset):
 
         # Select data identities.
         #   Train: reconstruction (source_uttr + source_emb  -> source_uttr)
-        #   Dev:   unseen-reconst (source_uttr + source_emb  -> source_uttr)
+        #   Dev:   unseen-uttr    (source_uttr + source_emb  -> source_uttr)
         #   Test:  A2A VC         (source_uttr + ave_tgt_emb -> target_uttr)
 
         all_utterances = self._corpus.get_identities()
@@ -197,19 +197,48 @@ class WavMelEmbVcDataset(Dataset):
         ## Utterance list of style target, which will be preprocessed as embedding
         self._targets: List[ItemId] = []
 
+        # Speaker split (train spk, val spk, test spk) & utterance split (train, val, test)
+        #
+        # [current] Experiment design: train / val O2O / test A2A
+        #          utterance    speaker
+        #   train      -           -
+        #   val     unseen        M2M
+        #   test    unseen        A2A
+        #
+        # [ideal] Experiment design: train / val O2O & A2M & A2A / test A2M & A2A
+        #               spk_1s         spk_2s        spk_3s
+        #   uttr_1s     <train>           -             -
+        #   uttr_2s  [val M2 & 2M]  [val A2 & 2A]       -
+        #              (test 2M)
+        #   uttr_3s        -              -       (Test A2 & 2A)
+        #
+        # how to implement
+        #   train: self-target reconstruction with uttr_1s/spk_1s corpus
+        #   val:
+        #     O2O: unseen utterance self-target reconstruction with uttr_2s/spk_1s corpus
+        #     A2M: seen-target VC of unseen utterances (uttr_2s/spk_2s => uttr_2s/spk_1s)
+        #     A2A: unseen-target VC of unseen utterances (uttr_2s/spk_2s => other spk of uttr_2s/spk_2s)
+        #   test:
+        #     A2M: seen-target VC of train-val-unseen utterances (uttr_3s/spk_3s => uutr_2s/spk_1s (uttr_2s for only target embedding)
+        #     A2A: unseen-target VC of train-val-unseen utterances (uttr_3s/spk_3s => other spk of uttr_3s/spk_3s)
+
         # Prepare `_sources` and `_targets`
         if split == 'train' or split == 'dev':
             # Additionally, prepare self-target `_vc_tuples`
             if corpus_name == "JVS":
-                all_utterances = split_jvs(all_utterances)[0]
+                # train & val share speakers (seen speaker (O2O | M2M))
+                all_utterances = speaker_split_jvs(all_utterances)[0]
+
             is_train = split == 'train'
             idx_dev = -1*conf.num_dev_sample
             for spk in set(map(lambda item_id: item_id.speaker, all_utterances)):
                 utts_spk = filter(lambda item_id: item_id.speaker == spk, all_utterances)
                 # tuples_spk = [[X#1, X#1], [X#2, X#2], ..., [X#n, X#n]]
                 tuples_spk = list(map(lambda item_id: [item_id, item_id], utts_spk))
+                # Data filtering 3/n
                 ## Data split: [0, -2X] is for train, [-X:] is for dev for each speaker
                 self._vc_tuples.extend(tuples_spk[:2*idx_dev] if is_train else tuples_spk[idx_dev:])
+            # source == target
             self._sources = list(map(lambda vc_tuple: vc_tuple[0], self._vc_tuples))
             self._targets = list(map(lambda vc_tuple: vc_tuple[1], self._vc_tuples))
         elif split == 'test':
@@ -219,7 +248,7 @@ class WavMelEmbVcDataset(Dataset):
                 self._sources = list(filter(lambda item_id: item_id.subtype == "eval_source", all_utterances))
                 self._targets = list(filter(lambda i: i.subtype == "train_target_task1", all_utterances))
             elif corpus_name == "JVS":
-                all_utterances = split_jvs(all_utterances)[1]
+                all_utterances = speaker_split_jvs(all_utterances)[1]
                 # 10 utterances per speaker for test source
                 self._sources = []
                 for spk in set(map(lambda item_id: item_id.speaker, all_utterances)):
