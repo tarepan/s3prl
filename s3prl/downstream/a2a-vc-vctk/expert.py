@@ -236,3 +236,12 @@ class DownstreamExpert(nn.Module):
             return self._data.val_dataloader()
         elif split == "test":
             return self._data.test_dataloader()
+
+    def inference(self, features, filenames) -> None:
+        """(S3PRL API) Entrypoint of inference (args.mode=='inference').
+
+        Args:
+            features
+            filenames::List[filename]
+        """
+        raise Exception("S3PRL-VC downstream do not implement `inference` yet.")

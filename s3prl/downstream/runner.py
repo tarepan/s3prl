@@ -75,6 +75,7 @@ Upstream Model: {upstream_model}
 
 class ModelEntry:
     def __init__(self, model, name, trainable, interfaces):
+        # model - ? (upstream) | ? (featurizer) | `DownstreamExpert` (downstream)
         self.model = model
         self.name = name
         self.trainable = trainable
@@ -85,12 +86,17 @@ class Runner():
     """
     Used to handle high-level concepts of a ML experiment
     eg. training loop, evaluation loop, upstream propagation, optimization, logging, checkpoint saving
+    Args:
+        config - Configuration (Const.)
     """
     def __init__(self, args, config):
         self.args = args
         self.config = config
+
+        # Checkpoint which contains `state_dict`s
         self.init_ckpt = torch.load(self.args.init_ckpt, map_location='cpu') if self.args.init_ckpt else {}
 
+        # `ModelEntry`s
         self.upstream = self._get_upstream()
         self.featurizer = self._get_featurizer()
         self.downstream = self._get_downstream()
@@ -98,21 +104,29 @@ class Runner():
 
 
     def _load_weight(self, model, name):
+        """Try to load state/weight of the model from the loaded checkpoint.
+
+        Args:
+            model - ? (upstream) | ? (featurizer) | `DownstreamExpert` (downstream)
+        """
         init_weight = self.init_ckpt.get(name)
         if init_weight:
             show(f'[Runner] - Loading {name} weights from the previous experiment')
             model.load_state_dict(init_weight)
 
 
-    def _init_model(self, model, name, trainable, interfaces=None):
+    def _init_model(self, model, name, trainable, interfaces=None) -> ModelEntry:
         """Initialize a model (upstream/featurizer/downstream)
+
+        Args:
+            model - ? (upstream) | ? (featurizer) | `DownstreamExpert` (downstream)
         """
 
         # Interface Assertion
         for interface in interfaces or []:
             assert hasattr(model, interface), interface
 
-        # Load model states from checkpoint specified by the name
+        # Load model states from state_dict in checkpoint specified by the name
         self._load_weight(model, name)
 
         if is_initialized() and trainable and any((p.requires_grad for p in model.parameters())):
@@ -123,7 +137,7 @@ class Runner():
         return ModelEntry(model, name, trainable, interfaces)
 
 
-    def _get_upstream(self):
+    def _get_upstream(self) -> ModelEntry:
         """Get upstream model from Hugging Face or s3prl hub.
         """
         # Acquire model (`Upstream`) and checkpoint path (`ckpt_path`)
@@ -179,7 +193,7 @@ class Runner():
         )
 
 
-    def _get_featurizer(self):
+    def _get_featurizer(self) -> ModelEntry:
         model = Featurizer(
             upstream = self.upstream.model,
             feature_selection = self.args.upstream_feature_selection,
@@ -196,15 +210,16 @@ class Runner():
         )
 
 
-    def _get_downstream(self):
-        # Dynamic import of the downstream
+    def _get_downstream(self) -> ModelEntry:
+        """Dynamically load the DownstreamExpert, init with arguments, then restore states."""
+        # Dynamic import of the downstream's `DownstreamExpert`
         Downstream = getattr(downstream.experts, self.args.downstream)
         # Input metadata from Featurizer's output metadata
         model = Downstream(
             upstream_dim = self.featurizer.model.output_dim,
             upstream_rate = self.featurizer.model.downsample_rate,
-            **self.config,    # the `config` (come from CLI)
-            **vars(self.args) # the `args`   (come from CLI)
+            **self.config,    # the finalized `config` (come from 'CLI and post-processing')
+            **vars(self.args) # the finalized `args`   (come from 'CLI and post-processing')
         ).to(self.args.device)
 
         return self._init_model(
@@ -241,6 +256,7 @@ class Runner():
 
 
     def train(self):
+        """Entrypoint of train mode (args.mode=='train')."""
         # trainable parameters and train/eval mode
         trainable_models = []
         trainable_paras = []
@@ -322,7 +338,7 @@ class Runner():
                     if specaug:
                         features, _ = specaug(features)
 
-                    # Forward/Downstream_and_Loss
+                    # Forward/Downstream_and_Loss (call `DownstreamExpert.forward`)
                     loss = self.downstream.model(
                         train_split,
                         features, *others,
@@ -450,7 +466,12 @@ class Runner():
 
 
     def evaluate(self, split=None, logger=None, global_step=0):
-        """evaluate function will always be called on a single process even during distributed training"""
+        """
+        Entrypoint of evaluation.
+
+        This function is called from CLI (as 'evaluate' mode) or from train function (as eval step of 'train' mode).
+        evaluate function will always be called on a single process even during distributed training
+        """
 
         # When this member function is called directly by command line
         not_during_training = split is None and logger is None and global_step == 0
@@ -489,6 +510,7 @@ class Runner():
             with torch.no_grad():
                 features = self.upstream.model(wavs)
                 features = self.featurizer.model(wavs, features)
+                # Execute `DownstreamExpert.forward`
                 self.downstream.model(
                     split,
                     features, *others,
@@ -524,6 +546,7 @@ class Runner():
         return [] if type(save_names) is not list else save_names
 
     def inference(self):
+        """Entrypoint of inference mode (args.mode=='inference')."""
         filepath = Path(self.args.evaluate_split)
         assert filepath.is_file(), filepath
         filename = filepath.stem
@@ -541,6 +564,7 @@ class Runner():
         with torch.no_grad():
             features = self.upstream.model(wavs)
             features = self.featurizer.model(wavs, features)
+            # Execute `DownstreamExpert.inference`
             self.downstream.model.inference(features, [filename])
 
     def push_to_huggingface_hub(self):
