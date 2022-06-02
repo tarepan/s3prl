@@ -148,10 +148,10 @@ class TacoVCNet(nn.Module):
         """Convert unit sequence into acoustic feature sequence.
 
         Args:
-            features (Batch, T_max, Feature_i): input unit sequences
-            lens
-            spk_emb (Batch, Spk_emb): speaker embedding vectors as global conditioning
-            targets (Batch, T_max, Feature_o): padded target acoustic feature sequences
+            features (Batch, T_max, Feat_i) - input unit sequences padded
+            lens     (Batch,)               - Time length of each unit sequence
+            spk_emb  (Batch, Spk_emb)       - speaker embedding vectors as global conditioning
+            targets  (Batch, T_max, Feat_o) - padded target acoustic feature sequences
         Returns:
             ((Batch, Tmax, Freq), lens)
         """

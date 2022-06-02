@@ -158,7 +158,7 @@ class TacoVC(nn.Module):
         Args:
             batch
                 input_features
-                input_feature_lengths
+                input_feature_lengths::(B,)
                 acoustic_features_padded
                 acoustic_feature_lengths
                 spk_embs - Speaker embeddings
