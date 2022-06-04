@@ -96,7 +96,7 @@ class Runner():
         # Checkpoint which contains `state_dict`s
         self.init_ckpt = torch.load(self.args.init_ckpt, map_location='cpu') if self.args.init_ckpt else {}
 
-        # `ModelEntry`s
+        # `ModelEntry`s (trainable/untrainable Upstream, trainable Featurizer, trainable Downstream)
         self.upstream = self._get_upstream()
         self.featurizer = self._get_featurizer()
         self.downstream = self._get_downstream()
@@ -139,6 +139,8 @@ class Runner():
 
     def _get_upstream(self) -> ModelEntry:
         """Get upstream model from Hugging Face or s3prl hub.
+
+        Returns - Upstream, initialized/restored, 'trainable' or not based on config
         """
         # Acquire model (`Upstream`) and checkpoint path (`ckpt_path`)
         ## From Hugging Face
@@ -194,6 +196,11 @@ class Runner():
 
 
     def _get_featurizer(self) -> ModelEntry:
+        """Get featurerizer.
+
+        Returns - 'trainable' featurizer, initialized/restored
+        """
+
         model = Featurizer(
             upstream = self.upstream.model,
             feature_selection = self.args.upstream_feature_selection,
@@ -211,7 +218,10 @@ class Runner():
 
 
     def _get_downstream(self) -> ModelEntry:
-        """Dynamically load the DownstreamExpert, init with arguments, then restore states."""
+        """Dynamically load the DownstreamExpert, init with arguments, then restore states.
+
+        Returns - 'trainable' downstream, initialized/restored
+        """
         # Dynamic import of the downstream's `DownstreamExpert`
         Downstream = getattr(downstream.experts, self.args.downstream)
         # Input metadata from Featurizer's output metadata
@@ -257,15 +267,19 @@ class Runner():
 
     def train(self):
         """Entrypoint of train mode (args.mode=='train')."""
-        # trainable parameters and train/eval mode
+        # model mode & model/param collection
+        ## For optimizer
         trainable_models = []
+        ## For gradient clipping
         trainable_paras = []
         for entry in self.all_entries:
             if entry.trainable:
+                ## Train mode
                 entry.model.train()
                 trainable_models.append(entry.model)
                 trainable_paras += list(entry.model.parameters())
             else:
+                ## Eval mode
                 entry.model.eval()
 
         # optimizer
@@ -364,7 +378,7 @@ class Runner():
                     else:
                         raise
 
-                # whether to accumulate gradient
+                # whether to accumulate gradient (`gradient_accumulate_steps==1` is normal each-step backprop)
                 backward_steps += 1
                 if backward_steps % gradient_accumulate_steps > 0:
                     continue
@@ -558,6 +572,7 @@ class Runner():
             assert sr == SAMPLE_RATE, sr
         wavs = [wav.view(-1).to(self.args.device)]
 
+        # Turn upstream/featurizer/downstream into eval mode
         for entry in self.all_entries:
             entry.model.eval()
 
