@@ -383,7 +383,7 @@ class Runner():
                 if backward_steps % gradient_accumulate_steps > 0:
                     continue
 
-                # gradient clipping
+                # gradient clipping (L2 norm clipping)
                 grad_norm = torch.nn.utils.clip_grad_norm_(
                     trainable_paras, self.config['runner']['gradient_clipping'])
 

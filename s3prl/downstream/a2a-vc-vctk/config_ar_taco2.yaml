@@ -1,7 +1,7 @@
 # Preserved for S3PRL-VC (when updated, mirror in `downstream_expert` also should be updated)
 runner:
   total_steps: 50000
-  # Maximum gradient value (clipped when bigger than `gradient_clipping`)
+  # Maximum gradient L2 norm (clipped when bigger than `gradient_clipping`)
   gradient_clipping: 1
   gradient_accumulate_steps: 1 # `1` means normal each-step backprop
   log_step: 500
