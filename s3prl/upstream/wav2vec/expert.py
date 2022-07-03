@@ -89,9 +89,9 @@ class UpstreamExpert(UpstreamBase):
         """
         Code snippet modified from fairseq
         {
-            "z": Output of `model.feature_extractor`
-            "codewords" Optional[(B, T, vq_dim)]: Discretized representative vector series
-            "codeids" Optional[(B, T, G)]: Discretized code group series
+            z         :: (Batch, T_unit, Feat)    - Output of `model.feature_extractor`
+            codewords :: Optional[(B, T, vq_dim)] - Discretized representative vector series
+            codeids   :: Optional[(B, T, G)]      - Code index group series
             "c": Context, output of `model.feature_aggregator`
             "default": == "c"
         }
@@ -101,11 +101,14 @@ class UpstreamExpert(UpstreamBase):
         padded_wav = pad_sequence(wavs, batch_first=True)
 
         # Encoding
+        ## (Batch, T_wave) -> (Batch, Feat, T_unit)
         features = self.model.feature_extractor(padded_wav)
+        ## z :: (Batch, T_unit, Feat)
         result["z"] = features.transpose(1, 2).contiguous()
 
         # Quantization, features is overridden
         if self.model.vector_quantizer:
+            ## (Batch, Feat, T_unit) ->
             q_res = self.model.vector_quantizer(features, produce_targets=True)
             # "x" (B, T, vq_dim==G*var_dim): Sampled representative vector series
             #   ※ dim 1 and 2 could be reversed based on `time_first` param of vq model
