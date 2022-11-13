@@ -205,7 +205,7 @@ class WavMelEmbVcDataset(Dataset):
         #   val     unseen        M2M
         #   test    unseen        A2A
         #
-        # [ideal] Experiment design: train / val O2O & A2M & A2A / test A2M & A2A
+        # [ideal] Experiment design: train / val A2M & A2A / test A2M & A2A
         #               spk_1s         spk_2s        spk_3s
         #   uttr_1s     <train>           -             -
         #   uttr_2s  [val M2 & 2M]  [val A2 & 2A]       -
@@ -221,6 +221,22 @@ class WavMelEmbVcDataset(Dataset):
         #   test:
         #     A2M: seen-target VC of train-val-unseen utterances (uttr_3s/spk_3s => uutr_2s/spk_1s (uttr_2s for only target embedding)
         #     A2A: unseen-target VC of train-val-unseen utterances (uttr_3s/spk_3s => other spk of uttr_3s/spk_3s)
+
+
+        #                           JVS1-92       JVS93-96      JVS97-100
+        #                           spk_1s         spk_2s        spk_3s
+        #     1-92      uttr_1s      <train>           -             -
+        #    93-96      uttr_2s     [val 2M]    [val A2 & 2A]       -
+        #                          (test 2M)
+        #    97-100     uttr_3s        -              -       (Test A2 & 2A)
+        #
+        #    (max)
+        #    val/test A2M: 4spk/4uttr x 92spk = 1472 wav
+        #    val/test A2A: 4spk/4uttr x 4spk = 64 wav
+        #
+        #    val  -> often, so number should be limited ([3spk]-to-<2spk> A2M (6 uttr), [3spk]-to-[3spk] A2A (9 uttr))
+        #    
+        #    test -> rarely recorded
 
         # Prepare `_sources` and `_targets`
         if split == 'train' or split == 'dev':
