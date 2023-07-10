@@ -9,6 +9,13 @@
     <a href="https://github.com/s3prl/s3prl/issues"><img alt="Bitbucket open issues" src="https://img.shields.io/github/issues/s3prl/s3prl"></a>
 </p>
 
+Note:  
+
+Disabled upstream (for code simplicity):  
+
+- DistilHuBERT
+- mockingjay
+
 ## Announcement
 
 If you wish to submit to SUPERB benchmark while you find [superbbenchmark.org](www.superbbenchmark.org) is down temporarily, please try to use [140.112.21.28](140.112.21.28) as an alternative. They share the same backend. We will make the official domain work as soon as possible.
@@ -33,22 +40,11 @@ Self-supervised speech pre-trained models are called **upstream** in this toolki
 
 The toolkit has **three major usages**:
 
-### Pretrain
-
-- Pretrain upstream models, including Mockingjay, Audio ALBERT and TERA.
-- Document: [**pretrain/README.md**](./s3prl/pretrain/README.md)
-
 ### Upstream
 
 - Easily load most of the existing upstream models with pretrained weights in a unified I/O interface.
 - Pretrained models are registered through **torch.hub**, which means you can use these models in your own project by one-line plug-and-play without depending on this toolkit's coding style.
 - Document: [**upstream/README.md**](./s3prl/upstream/README.md)
-
-### Downstream
-
-- Utilize upstream models in lots of downstream tasks
-- Benchmark upstream models with [**SUPERB Benchmark**](./s3prl/downstream/docs/superb.md)
-- Document: [**downstream/README.md**](./s3prl/downstream/README.md)
 
 Below is an **intuitive illustration** on how this toolkit may help you:
 \

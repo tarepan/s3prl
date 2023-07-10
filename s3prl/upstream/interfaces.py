@@ -7,7 +7,13 @@ import torch.nn as nn
 from torch import Tensor
 import torch.nn.functional as F
 
-from s3prl.utility.helper import show
+
+from torch.distributed import is_initialized, get_rank
+def show(*args, **kwargs):
+    # is_leader_process
+    if not is_initialized() or get_rank() == 0:
+        print(*args, **kwargs)
+
 
 SAMPLE_RATE = 16000
 TOLERABLE_SEQLEN_DIFF = 5

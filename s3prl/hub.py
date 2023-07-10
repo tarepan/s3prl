@@ -1,3 +1,6 @@
+"""Core of `s3prl.hub`."""
+
+
 def _get_hubconf_entries():
     """Dynamic hub module generation.
 
@@ -11,7 +14,6 @@ def _get_hubconf_entries():
     # `_search_root`: 's3prl'
     _search_root = pathlib.Path(__file__).parent
     _hubconfs = list(_search_root.glob("upstream/*/hubconf.py"))
-    _hubconfs += list(_search_root.glob("downstream/*/hubconf.py"))
 
     # `_hubconf`::Path - path of hubconf.py
     for _hubconf in _hubconfs:

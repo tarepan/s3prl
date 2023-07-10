@@ -1,0 +1,35 @@
+[tool.poetry]
+name = "s3prl"
+version = "0.3.1"
+description = "Self-Supervised Speech Pre-training and Representation Learning Toolkit"
+authors = ["s3prl teams", "tarepan"]
+readme = "README.md"
+repository = "https://github.com/tarepan/s3prl"
+
+[tool.poetry.dependencies]
+python       = "^3.6"
+# torch      = ">=1.7.0, !=1.10.0"
+# torchaudio = ">=0.7.0"
+# numpy      = ">=1.21"
+PyYAML       = ">=5.4"
+gdown        = ">=3.12.2"
+# cython     = ">=0.29.21"
+packaging    = ">=20.9"
+transformers = ">=4.10.0,<5.0"
+sox          = "1.4.*"
+easydict     = "1.9"
+# "fairseq @ git+https://github.com//pytorch/fairseq.git@f2146bdc7abf293186de9449bfa2272775e39e1d#egg=fairseq",
+
+[tool.poetry.dev-dependencies]
+pytest = "7.*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pylint.messages_control]
+disable = [
+  # This is opinionated
+  "line-too-long",
+  "pointless-string-statement",
+]
