@@ -18,6 +18,7 @@ packaging    = ">=20.9"
 transformers = ">=4.10.0,<5.0"
 sox          = "1.4.*"
 easydict     = "1.9"
+lxml         = "4.9.3"
 fairseq      = {git = "https://github.com/tarepan/fairseq.git", rev = "main"}
 # "fairseq @ git+https://github.com//pytorch/fairseq.git@f2146bdc7abf293186de9449bfa2272775e39e1d#egg=fairseq",
 
