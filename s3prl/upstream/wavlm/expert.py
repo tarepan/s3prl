@@ -35,7 +35,9 @@ class UpstreamExpert(UpstreamBase):
     def __init__(self, ckpt, **kwargs):
         super().__init__(**kwargs)
 
-        checkpoint = torch.load(ckpt)
+        # Load model
+        device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        checkpoint = torch.load(ckpt, map_location=device)
         self.cfg = WavLMConfig(checkpoint['cfg'])
         self.model = WavLM(self.cfg)
         self.model.load_state_dict(checkpoint['model'])

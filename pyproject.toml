@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "s3prl"
-version = "0.3.1"
+version = "0.3.2"
 description = "Self-Supervised Speech Pre-training and Representation Learning Toolkit"
 authors = ["s3prl teams", "tarepan"]
 readme = "README.md"

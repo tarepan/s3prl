@@ -25,7 +25,8 @@ class UpstreamExpert(nn.Module):
 
     def __init__(self, ckpt, **kwargs):
         super(UpstreamExpert, self).__init__()
-        models = torch.load(ckpt)['model']
+        device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        models = torch.load(ckpt, map_location=device)['model']
         self.model = Decoar()
         component_state_dict = OrderedDict()
 
